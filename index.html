@@ -1245,7 +1245,7 @@ function setCam(mode){if(!cur)return;const b=cur.box;if(mode!='free'){cam.tx=b.c
  if(mode=='top'){cam.th=0;cam.ph=.03;cam.r=fitR()}
  else if(mode=='side'){cam.th=0;cam.ph=1.02;cam.r=fitR()*.92}
  else if(mode=='behind'){const a=cur.me;let fx=0,fy=0,best=0;for(let n=0;n<cur.N;n+=10){const dx=a.x[n]-a.x[0],dy=a.y[n]-a.y[0],dd=dx*dx+dy*dy;if(dd>best){best=dd;fx=dx;fy=dy}}
-  if(best<6){fx=Math.cos(a.h[0]);fy=Math.sin(a.h[0])}cam.th=Math.atan2(-fx,fy);cam.ph=1.2;cam.r=9;cam.follow=true}
+  if(best<6){fx=Math.cos(a.h[0]);fy=Math.sin(a.h[0])}cam.th=Math.atan2(-fx,fy);cam.ph=1.2;cam.r=9;cam.follow=true;cam.tx=a.x[0]-20;cam.tz=10-a.y[0]}
  cam.mode=mode;$$('[data-cam]').forEach(b=>b.classList.toggle('on',b.dataset.cam==mode))}
 function updateCam(t){if(cam.follow&&cur){const a=cur.me,x=samp(a.x,t)-20,z=10-samp(a.y,t);cam.tx=lerp(cam.tx,x,.12);cam.tz=lerp(cam.tz,z,.12)}
  const sp=Math.sin(cam.ph),cp=Math.cos(cam.ph);camera.position.set(cam.tx+cam.r*sp*Math.sin(cam.th),.9+cam.r*cp,cam.tz+cam.r*sp*Math.cos(cam.th));camera.lookAt(cam.tx,.9,cam.tz)}
