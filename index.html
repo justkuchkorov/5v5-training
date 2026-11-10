@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>5v5 Training Library</title>
+<script>
+/* =====================================================================
+   DRILL DATA — edit or add drills here. Everything else reads from this.
+   =====================================================================
+   Pitch: 40 m (x) by 20 m (y). (0,0) = bottom-left corner. Your team attacks toward x = 40.
+
+   One drill = {
+     id, name, cat (sidebar group), role ('CM' | 'LW' | 'both'),
+     min (fewest players needed, keeper included), players (text), diff (1 easy, 2 medium, 3 hard),
+     improves, space, equip, setup, steps[], dose, points[], mistakes[], easier, harder,
+     anim: {
+       title, dur (seconds),
+       cones: [[x,y],...],  zones: [[x0,y0,x1,y1],...]  (shaded boxes),
+       actors: { LABEL: {
+           r:   'me' | 'mate' | 'opp' | 'gk' | 'neu'   (shirt colour),
+           at:  [x,y] start,  f: facing in degrees (0 = toward x=40, 90 = toward y=20),
+           idle:'stand' | 'soft' | 'ready' | any pose name,
+           k:   [[time, x, y, gait, {f: facing}], ...]   "be at (x,y) at this time, moving with this gait"
+                gaits: walk jog run sprint drive brake back shuffle jockey
+                poses: stand soft ready plantL plantR slL slLd slR slRd fall shield lean ... (see POSE in the engine)
+                f can be degrees, another actor's label, 'ball', or [x,y]
+           acts:[[time, kind, arg, duration], ...]
+                kinds: scan L/R, feint L/R, stepover L/R, point L/R, tackle L/R, dive L/R, hop height
+       } },
+       ball: { at:[x,y], segs: [[t0, t1, kind, byActor, [toX,toY], foot 'L'/'R', {options}], ...] },
+             kinds: drib (ball follows the player's touches), pass, shot ({h: height, c: curve, st:'poke'|'laces'|'curl'}),
+                    touch (short push), sole (foot stays on the ball and rolls it), stop (sole on a still ball),
+                    roll (ball moves on its own)
+       phases: [[t0, t1, name, what happens], ...]   captions and phase stepping
+     }
+   }
+   Kicks, touches and sole rolls are animated automatically from the ball segments.
+   ===================================================================== */
+const C1='Warm-up & injury prevention',C2='Speed & change of direction',C3='Ball mastery & close control',C4='Attacking 1v1',C5='Defending 1v1 & tracking',C6='First touch, scanning, passing',C7='Shooting in tight spaces',C8='Decision-making & trust',C9='Conditioning',C10='Recovery',C11='Build-up through the middle';
+const DRILLS=[
+/* ---------- 1. Warm-up and injury prevention ---------- */
+{id:'1.1',name:'FIFA 11+ Part 1: running exercises',cat:C1,role:'both',min:2,players:'Pairs, any number',diff:1,
+ improves:'Blood flow, hip mobility, landing control.',space:'25 m × 6 m lane',equip:'12 cones',
+ setup:'Two lines of 6 cones: x = 8, 13, 18, 23, 28, 33 on y = 7 and the same on y = 13. Each pair of cones is one gate. Partners start at x = 8: A at (8, 7.5), B at (8, 12.5). Jog back on the outside (y = 5 and y = 15).',
+ steps:['Straight ahead: jog together to the last gate, then jog back a little faster.','Hip out: at each cone stop, lift the knee forward, rotate it out to the side, put the foot down, continue.','Hip in: at each cone lift the knee out to the side, rotate it forward and in, put it down, continue.','Circling partner: at each gate shuffle sideways to meet in the middle, shuffle one full circle around each other, shuffle back.','Shoulder contact: at each gate shuffle to the middle, jump sideways into a light shoulder-to-shoulder bump, land on both feet with knees bent.','Quick forwards and backwards: sprint 2 cones forward, backpedal 1 cone, repeat to the end.'],
+ dose:'Each exercise 2 lengths (2 sets); the jog back is the rest. About 8 minutes in total.',
+ points:['Knees stay over your toes; never let them cave inward.','Land softly on the balls of your feet, hips and knees bent.','Trunk upright and stable on every shuffle and landing.'],
+ mistakes:['Treating it as a chatty jog with sloppy form; the benefit comes from doing the movements properly.','Knees buckling inward on landings and side shuffles.'],
+ easier:'Use 3 gates instead of 6 and skip the shoulder contact.',harder:'Run the return leg at 70–80% speed, or dribble a ball on the way back.',
+ anim:{title:'One length of exercise 6 (quick forwards and backwards)',dur:22,
+  cones:[[8,7],[13,7],[18,7],[23,7],[28,7],[33,7],[8,13],[13,13],[18,13],[23,13],[28,13],[33,13]],
+  actors:{
+   A:{r:'me',at:[8,7.5],k:[[1.8,18,7.5,'sprint'],[3.3,13,7.5,'back'],[5.1,23,7.5,'sprint'],[6.6,18,7.5,'back'],[8.4,28,7.5,'sprint'],[9.9,23,7.5,'back'],[11.7,33,7.5,'sprint'],[13.2,33.5,5,'jog'],[20.8,8.5,5,'jog'],[22,8,7.5,'jog']]},
+   B:{r:'mate',at:[8,12.5],k:[[1.8,18,12.5,'sprint'],[3.3,13,12.5,'back'],[5.1,23,12.5,'sprint'],[6.6,18,12.5,'back'],[8.4,28,12.5,'sprint'],[9.9,23,12.5,'back'],[11.7,33,12.5,'sprint'],[13.2,33.5,15,'jog'],[20.8,8.5,15,'jog'],[22,8,12.5,'jog']]}},
+  phases:[[0,1.8,'Sprint forward','A sprints from x = 8 to x = 18'],[1.8,3.3,'Brake and backpedal','Short braking steps, backpedal to x = 13'],[3.3,5.1,'Sprint forward','Sprint to x = 23'],[5.1,6.6,'Backpedal','Back to x = 18'],[6.6,8.4,'Sprint forward','Sprint to x = 28'],[8.4,9.9,'Backpedal','Back to x = 23'],[9.9,11.7,'Final sprint','Sprint to x = 33'],[11.7,22,'Jog back','Jog outside the lane back to the start']]}},
+
+{id:'1.2',name:'FIFA 11+ Part 2: strength, plyometrics, balance',cat:C1,role:'both',min:2,players:'Pairs',diff:2,
+ improves:'Core and leg strength, balance, safe landing.',space:'5 m × 5 m per pair',equip:'1 ball per pair',
+ setup:'Pairs spread around the middle of the lane, for example A at (20, 9) and B at (20, 11.5), 2.5 m apart.',
+ steps:['Front plank — L1 static hold · L2 alternate legs · L3 one leg lift and hold. 3 × 20–30 s.','Side plank — L1 static hold · L2 raise and lower hip · L3 with leg lift. 3 × 20–30 s each side.','Single-leg stance — L1 hold the ball · L2 throw the ball with partner · L3 partners try to push each other off balance. 2 × 30 s each leg.','Squats — L1 with toe raise · L2 walking lunges · L3 one-leg squats. 2 × 30 s.','Jumping — L1 vertical jumps · L2 lateral jumps (one leg to the other) · L3 box jumps (forward, back, sideways). 2 × 30 s.','The Nordic hamstring exercise also sits in Part 2; it has its own card (1.4).'],
+ dose:'Pick the level you can do with good form. Planks 3 × 20–30 s; the rest 2 × 30 s.',
+ points:["Plank: one straight line from head to heels; don't let the hips sag.",'Squats and landings: knee points over the second toe.','Jumps: land softly and hold the landing for a moment before the next jump.'],
+ mistakes:['Jumping to a harder level before Level 1 looks clean.','Locked, straight-legged landings.'],
+ easier:'Stay on Level 1 for every exercise for the first 2 weeks.',harder:'Move one level up when you can do 2 sets with perfect form.',
+ anim:{title:'One rep of lateral jumps (Level 2)',dur:3,
+  actors:{
+   A:{r:'me',at:[20,9],f:0,idle:'slR',k:[[.3,20,9,'slRd'],[.5,20,9.12,'slR'],[.7,20,10,'slL'],[.95,20,10,'slLd'],[1.3,20,10,'slL'],[1.55,20,10,'slLd'],[1.75,20,9.88,'slL'],[1.95,20,9,'slR'],[2.2,20,9,'slRd'],[2.6,20,9,'slR']],acts:[[.5,'hop',.22,.2],[1.75,'hop',.22,.2]]},
+   B:{r:'mate',at:[20,11.5],f:0,idle:'slR',k:[[.3,20,11.5,'slRd'],[.5,20,11.62,'slR'],[.7,20,12.5,'slL'],[.95,20,12.5,'slLd'],[1.3,20,12.5,'slL'],[1.55,20,12.5,'slLd'],[1.75,20,12.38,'slL'],[1.95,20,11.5,'slR'],[2.2,20,11.5,'slRd'],[2.6,20,11.5,'slR']],acts:[[.5,'hop',.22,.2],[1.75,'hop',.22,.2]]}},
+  phases:[[0,.3,'Load','Standing on the right leg, bend hip and knee'],[.3,.5,'Push off','Drive sideways off the right leg'],[.5,.7,'Flight','Travel about 1 m to the left'],[.7,1.3,'Land and hold','Land on the left leg, knee over toe, hold'],[1.3,2.6,'Return','Repeat back to the right leg']]}},
+
+{id:'1.3',name:'FIFA 11+ Part 3: running at speed',cat:C1,role:'both',min:1,players:'Any',diff:1,
+ improves:'Readiness for sprints and cuts.',space:'40 m × 8 m',equip:'4 cones',
+ setup:'Start cone at (2, 4), finish cone at (38, 4) for running and bounding. For plant and cut, cones at (5, 10), (15, 14), (25, 10), (35, 14).',
+ steps:['Across the pitch: run from (2, 4) to (38, 4) at 75–80% of top speed, jog back.','Bounding: high, springy steps with a big knee lift and active arms; land gently on the ball of the foot. Jog back.','Plant and cut: jog 4–5 steps, plant on the right leg and cut left, accelerate 5–7 steps at 80–90%, slow down, plant on the left leg and cut right. Repeat to the end.'],
+ dose:'Each exercise 2 sets; about 2 minutes.',
+ points:['Upright body, quick arms on the run.','On the cut, the plant foot lands outside your body with the knee over the toe.','Slow down with short steps before each cut.'],
+ mistakes:['Going flat out (100%) here; this part gets you ready, it does not test you.','Planting with a straight leg and the knee caving in.'],
+ easier:'Run at 60–70% and skip bounding.',harder:'React to a partner pointing left or right for each cut.',
+ anim:{title:'Plant and cut, one length',dur:10,cones:[[5,10],[15,14],[25,10],[35,14]],
+  actors:{A:{r:'me',at:[2,10],k:[[1.5,5,10,'jog'],[1.8,5.2,10.15,'plantR'],[3.4,14,13.7,'run'],[4,15,14,'brake'],[4.3,15.2,13.85,'plantL'],[5.9,24,10.3,'run'],[6.5,25,10,'brake'],[6.8,25.2,10.15,'plantR'],[8.6,34,13.7,'run'],[9.5,35,14,'brake']]}},
+  phases:[[0,1.5,'Jog in','A jogs from (2, 10) to (5, 10)'],[1.5,1.8,'Plant right, cut left','Right foot plants at (5, 10), hips turn toward +y'],[1.8,3.4,'Accelerate','Run to (14, 13.7)'],[3.4,4,'Brake','Short steps to (15, 14)'],[4,4.3,'Plant left, cut right','Left foot plants, hips turn toward −y'],[4.3,9.5,'Accelerate and repeat','Through (25, 10) to (35, 14), then jog back']]}},
+
+{id:'1.4',name:'Nordic hamstring exercise',cat:C1,role:'both',min:2,players:'Pairs',diff:3,
+ improves:'Hamstring strength while lengthening, which protects you in sprints. Extra important for the LW (more sprints).',space:'2 m × 1 m',equip:'Soft surface (grass, or a folded jacket on a court)',
+ setup:"A kneels at (20, 10) facing +x. Partner P kneels behind at (19.3, 10) and holds A's ankles to the ground.",
+ steps:['Kneel upright, body straight from knees to head, hands ready in front of the chest.','Lean forward as slowly as you can, braking with your hamstrings.',"When you can't hold any more, fall onto your hands into a push-up position.",'Push yourself back up to kneeling (use your hands as much as you need).'],
+ dose:"FIFA 11+ levels — Level 1: 1 set of 3–5 reps. Level 2: 7–10 reps. Level 3: 12–15 reps. Start at Level 1 for 2–3 weeks. Expect sore hamstrings for the first week; don't start this the day before a big game.",
+ points:['Keep a straight line from knee to shoulder; the hips must not bend.','Fight gravity for as long as possible; aim for 3–4 seconds of lowering.',"Partner pins the ankles firmly so the heels don't lift."],
+ mistakes:['Bending at the hips (sticking the bum out) to make it easier.','Falling fast after the first few degrees instead of braking all the way.'],
+ easier:'Lower only part of the way (about 30–45°) and push back up.',harder:'Move up a level, or pause for 2 s at the hardest angle before falling.',
+ anim:{title:'One rep',dur:6,
+  actors:{A:{r:'me',at:[20,10],f:0,idle:'nordic0',k:[[.5,20,10,'nordic0'],[2,20,10,'nordic1'],[3.5,20,10,'nordic2'],[4,20,10,'nordicC'],[5.5,20,10,'nordic0']]},
+   P:{r:'mate',at:[19.3,10],f:0,idle:'kneelHold'}},
+  phases:[[0,.5,'Set','Kneeling upright, trunk vertical'],[.5,3.5,'Slow lower','Trunk rotates forward around the knees, from vertical to about 30° above the ground'],[3.5,4,'Catch','Hands catch in push-up position'],[4,5.5,'Return','Push back to kneeling']]}},
+
+{id:'1.5',name:'Copenhagen adduction',cat:C1,role:'both',min:2,players:'Pairs',diff:3,
+ improves:'Inner-thigh (adductor) strength, which protects against groin pain from kicking and cutting.',space:'2 m × 2 m',equip:'None',
+ setup:"A lies on the left side at (20, 10), body along the x axis, left forearm under the shoulder. Partner P stands at (21.2, 10) and holds A's right (top) leg at hip height.",
+ steps:['Short lever: P holds the top leg at the knee. Long lever (harder): P holds at the ankle.','Lift your body into a side plank; at the same time bring the bottom leg up to touch the top foot.','Lower your body and bottom leg slowly (about 3 s) until they almost touch the ground.','Repeat, then switch sides.'],
+ dose:'Start with 1–2 sets of 3–5 reps per side, short lever, twice a week. Build over 6–8 weeks toward three sessions a week, then keep it going once a week.',
+ points:['Straight line from head to feet; hips stay stacked.','Lower slowly; the lowering is where the strength comes from.','Partner keeps the top leg at your hip height the whole time.'],
+ mistakes:['Hips sagging or rolling backward.','Doing too many reps in week 1 and getting very sore inner thighs.'],
+ easier:"Short lever, or hold a static side plank with the top leg on the partner's knee for 15–20 s.",harder:'Long lever, and hold 2 s at the top of each rep.',
+ anim:{title:'One rep (short lever)',dur:5.5,
+  actors:{A:{r:'me',at:[20.45,10],f:90,idle:'copLow',k:[[.5,20.45,10,'copLow'],[1.5,20.45,10,'copHigh'],[2,20.45,10,'copHigh'],[5,20.45,10,'copLow']]},
+   P:{r:'mate',at:[21.45,10.1],f:180,idle:'holdLeg'}},
+  phases:[[0,.5,'Set','Lying on the side, top leg held'],[.5,1.5,'Lift','Hips rise; bottom leg rises to meet the top foot'],[1.5,2,'Hold','Straight side plank'],[2,5,'Slow lower','Body and bottom leg lower until just above the ground']]}},
+
+/* ---------- 2. Acceleration, deceleration and change of direction ---------- */
+{id:'2.1',name:'Short acceleration starts',cat:C2,role:'both',min:1,players:'Solo or pairs',diff:1,
+ improves:'First 3 steps, 0–10 m acceleration (LW: beating a man; CM: closing down).',space:'15 m × 10 m',equip:'6 cones',
+ setup:'Three lanes. Start cones at (5, 6), (5, 10), (5, 14). Finish cones at (15, 6), (15, 10), (15, 14). 10 m sprints.',
+ steps:['Rep 1–2: falling start. Stand tall, lean forward from the ankles until you have to step, then sprint.','Rep 3: lying face down, head toward the finish; push up and sprint.','Rep 4: standing with your back to the finish; turn and sprint.','Rep 5: side-on, shuffle 2 steps, then turn and sprint.','Sprint through the finish cones, slow down over 5 m, walk back.'],
+ dose:'2 sets × 5 reps of 10 m at max effort. 60 s rest between reps (the walk back plus a little), 2–3 min between sets.',
+ points:['Lean forward from the ankles, not the waist.','First steps are short, powerful pushes back into the ground.','Drive the arms hard: elbow back, hand to chin height.'],
+ mistakes:['Popping upright on the first step.','Reaching with long strides at the start.'],
+ easier:'5 m sprints from a standing start.',harder:"Race a partner, and the one who reacts to the other's first movement must catch them.",
+ anim:{title:'One falling-start rep',dur:4,cones:[[5,6],[5,10],[5,14],[15,6],[15,10],[15,14]],
+  actors:{A:{r:'me',at:[5,10],f:0,k:[[.6,5.15,10,'fall'],[1.1,6.8,10,'drive'],[2.4,15,10,'sprint'],[3.6,20,10,'brake']]}},
+  phases:[[0,.6,'Lean','Standing at the start cone, body tips forward as one straight line'],[.6,1.1,'First steps','3 short, hard pushes, body at about 45°'],[1.1,2.4,'Acceleration','Body rises gradually, strides lengthen'],[2.4,3.6,'Slow down','Gradual braking past the finish']]}},
+
+{id:'2.2',name:'Sprint to stop (braking)',cat:C2,role:'both',min:1,players:'Solo',diff:1,
+ improves:'Stopping fast and under control, which sets up every cut and every defensive stop. CM especially: stopping in front of an attacker.',space:'20 m × 4 m',equip:'3 cones',
+ setup:'Start cone at (5, 10). Stop zone between cones at (15, 10) and (17, 10): a 2 m box.',
+ steps:['Sprint from the start cone.','Stop completely inside the stop zone in as few steps as you can.','Hold an athletic stance for 2 s: feet wide, hips low, chest up.','Walk back.'],
+ dose:'2 sets × 5 reps. Week 1 at about 70% speed, then build to full speed. 45–60 s between reps.',
+ points:['Lower your hips early and switch to short, quick steps.','Keep the chest over your knees; do not lean back.','Final step wide, both knees bent, weight on the whole foot.'],
+ mistakes:['Stopping with one long, straight-legged heel stab.','Leaning the trunk backward and sliding past the zone.'],
+ easier:'5 m approach at 60–70% speed.',harder:'A partner shouts “stop” at a random moment, or stop and immediately backpedal 3 m.',
+ anim:{title:'One rep',dur:4.8,cones:[[5,10],[15,10],[17,10]],zones:[[15,9,17,11]],
+  actors:{A:{r:'me',at:[5,10],f:0,k:[[1.7,14,10,'sprint'],[2.4,16,10,'brake'],[4.4,16,10,'ready']]}},
+  phases:[[0,1.7,'Sprint','A accelerates from (5, 10) to (14, 10)'],[1.7,2.4,'Brake','4–5 short steps, hips drop'],[2.4,4.4,'Hold','Athletic stance inside the zone']]}},
+
+{id:'2.3',name:'5-0-5 turns',cat:C2,role:'both',min:1,players:'Solo or pairs',diff:2,
+ improves:'180° turns, the futsal “press and recover” action.',space:'20 m × 4 m',equip:'3 cones',
+ setup:'Start cone (5, 10), timing cone (15, 10), turn line cone (20, 10).',
+ steps:['Sprint from (5, 10) toward the turn line.','Brake over the last 3–4 steps, plant at x = 20 and turn 180°.','Sprint back through the timing cone at x = 15, then slow down.','Alternate the turning foot each rep.'],
+ dose:'2 sets × 6 reps (3 turning off each foot). 60–90 s between reps.',
+ points:['Brake early with short steps, hips low.','Turn on a wide, sideways plant foot with the knee over the toe.','Eyes and head lead the turn, then push hard back the way you came.'],
+ mistakes:['Rounding the turn in a wide arc.','Always turning on your favourite side.'],
+ easier:'90° cut instead: at x = 20 cut and run to (20, 15).',harder:'Do it with a ball: dribble in, sole-drag turn at x = 20, dribble out.',
+ anim:{title:'One rep (turning off the left foot)',dur:5.3,cones:[[5,10],[15,10],[20,10]],
+  actors:{A:{r:'me',at:[5,10],f:0,k:[[2.2,18.5,10,'sprint'],[2.7,19.7,10,'brake'],[3.1,19.75,10.1,'plantL',{f:-90}],[4.2,15,10,'sprint'],[5,11,10,'jog']]}},
+  phases:[[0,2.2,'Sprint in','A sprints from (5, 10) to (18.5, 10)'],[2.2,2.7,'Brake','Short steps to (19.8, 10)'],[2.7,3.1,'Plant and turn','Left foot plants wide at (20, 10.3), body turns 180°'],[3.1,4.2,'Re-accelerate','Sprint back past (15, 10)'],[4.2,5,'Slow down','Jog to (11, 10)']]}},
+
+{id:'2.4',name:'Mirror drill',cat:C2,role:'both',min:2,players:'Pairs',diff:2,
+ improves:'Reacting to an opponent, the core of both beating and tracking a man in 5v5. CM as follower, LW as leader.',space:'5 m × 3 m',equip:'4 cones',
+ setup:"Leader L's channel: cones at (21, 7.5) and (21, 12.5). Follower F's channel: cones at (19, 7.5) and (19, 12.5). Players face each other 2 m apart, each in their own 5 m channel.",
+ steps:['Both start in the middle (y = 10), in athletic stance.','For 10 s, L shuffles, cuts and fakes along the channel, trying to get 1 m away from F.','F copies every move and tries to stay directly opposite.','Swap roles.'],
+ dose:'4 × 10 s in each role, 40–50 s rest between efforts.',
+ points:['Stay low with your feet wider than your shoulders.',"Follower watches the leader's hips, not the head or feet.","Short, fast shuffles; don't cross your feet."],
+ mistakes:['Standing tall, which makes every push-off slow.','Follower biting on head and shoulder fakes.'],
+ easier:'Leader goes at half speed with 2–3 changes only.',harder:'At the end of the 10 s, L sprints to a cone at (26, 10) and F tries to tag L first.',
+ anim:{title:'First 3 s of one rep',dur:3.4,cones:[[21,7.5],[21,12.5],[19,7.5],[19,12.5]],
+  actors:{L:{r:'me',at:[21,10],f:180,idle:'ready',k:[[.5,21,10,'ready'],[1.3,21,12,'shuffle'],[1.6,21,12.05,'plantR'],[2.6,21,8,'shuffle'],[3,21,8,'ready']]},
+   F:{r:'opp',at:[19,10],f:0,idle:'ready',k:[[.7,19,10,'ready'],[1.5,19,11.8,'shuffle'],[1.85,19,11.85,'plantL'],[2.8,19,8.4,'shuffle'],[3,19,8.4,'ready']]}},
+  phases:[[0,.5,'Set','L at (21, 10), F at (19, 10), both low'],[.5,1.3,'Leader shuffles','L shuffles to (21, 12); F follows to (19, 11.8), about 0.2 s behind'],[1.3,1.6,'Leader plants','L plants the outside foot'],[1.6,2.6,'Leader cuts back','L goes to (21, 8); F reacts to (19, 8.4)'],[2.6,3,'Leader holds','L stops; F stops']]}},
+
+{id:'2.5',name:'Plyometric mini-circuit',cat:C2,role:'both',min:1,players:'Solo',diff:2,
+ improves:'Spring, first-step power, safe landings.',space:'10 m × 4 m',equip:'2 cones',
+ setup:'Two cones 1.5 m apart across the pitch, at (15, 9.25) and (15, 10.75), for the skater bounds.',
+ steps:['Pogo hops: small, quick two-footed hops on the spot with stiff ankles.','Skater bounds: jump sideways from one cone to the other, landing on one leg, hold 1 s.','Single-leg hop and stick: 3 hops forward on one leg, hold the last landing for 2 s.'],
+ dose:'Pogo hops 2 × 10; skater bounds 2 × 6 per side; single-leg hops 2 × 3 per leg. About 60–80 foot contacts in total. 60 s between sets. Twice a week, early in the session.',
+ points:['Quiet landings: land like you are trying not to make noise.','Knee over the second toe on every one-leg landing.','On pogos, bounce off the balls of the feet, heels barely touching.'],
+ mistakes:['Doing jumps tired at the end of the session.','Knees caving in on the side landings.'],
+ easier:'Two-footed versions, half the distance.',harder:'Finish each skater bound with a 5 m sprint the moment you land.',
+ anim:{title:'One skater bound',dur:2.2,cones:[[15,9.25],[15,10.75]],
+  actors:{A:{r:'me',at:[15,9.25],f:0,idle:'slL',k:[[.3,15,9.25,'slLd'],[.5,15.05,9.45,'slL'],[.8,15.3,10.75,'slR'],[1.05,15.3,10.75,'slRd'],[1.8,15.3,10.75,'slR']],acts:[[.5,'hop',.3,.3]]}},
+  phases:[[0,.3,'Load','On the left leg at the low cone, hips back'],[.3,.5,'Push','Drive sideways and slightly forward'],[.5,.8,'Flight','Arms swing across the body'],[.8,1.8,'Land and stick','Land on the right leg, hold']]}},
+
+/* ---------- 3. Ball mastery and close control ---------- */
+{id:'3.1',name:'Sole rolls and taps (on the spot)',cat:C3,role:'both',min:1,players:'Solo (everyone at once)',diff:1,
+ improves:'Sole control and touch with both feet.',space:'3 m × 3 m each',equip:'1 ball each',
+ setup:'Each player in their own 3 m box; example A with the ball at (10, 10), facing +x.',
+ steps:['Toe taps: alternate the soles on top of the ball, quick and light.','Side sole rolls: roll the ball across your body with the right sole, stop it with the left inside, roll it back with the left sole.','V-pulls: pull the ball back with the right sole, push it diagonally forward-left with the inside of the same foot; repeat with the left.','Pull-push: pull back with the sole, push forward with the laces of the same foot; alternate feet.','Inside-inside: tap the ball between the insides of both feet, ball under your hips.','Sole roll and stop: roll forward with the sole, stop with the sole, change foot.'],
+ dose:'6 moves × 30 s, 15 s rest between moves, 2 rounds (about 9 min).',
+ points:['Light touches: the ball should never be further than one step away.','Stay on the balls of your feet, knees soft.','Look up every 2–3 touches.'],
+ mistakes:['Using only your strong foot.','Staring at the ball the whole time.'],
+ easier:'20 s per move at slow speed.',harder:'A partner holds up fingers every few seconds and you call the number out while keeping the move going.',
+ anim:{title:'One V-pull cycle',dur:1.8,zones:[[8.5,8.5,11.5,11.5]],
+  actors:{A:{r:'me',at:[10,10],f:0,idle:'soft'}},
+  ball:{at:[10.4,9.8],segs:[[0,.3,'stop','A',null,'R'],[.3,.6,'sole','A',[10,9.8],'R'],[.6,.9,'touch','A',[10.4,10.2],'R'],[.9,1.2,'stop','A',null,'L'],[1.2,1.5,'sole','A',[10,10.2],'L'],[1.5,1.8,'touch','A',[10.4,9.8],'L']]},
+  phases:[[0,.3,'Right sole on ball','Ball in front of the right foot'],[.3,.6,'Pull back','Right sole rolls the ball back'],[.6,.9,'Push across','Inside of the right foot pushes it diagonally forward-left'],[.9,1.2,'Left sole on ball','Left sole catches it'],[1.2,1.8,'Pull back and push','Same with the left foot back to the start']]}},
+
+{id:'3.2',name:'Futsal turns through a channel',cat:C3,role:'both',min:1,players:'Solo or 2–4 in a line',diff:2,
+ improves:'Turning away from pressure with the sole (CM: escaping a presser; LW: checking back).',space:'12 m × 4 m',equip:'4 cones, 1 ball each',
+ setup:'Channel with cones at (10, 8), (10, 12), (20, 8), (20, 12). Start at (10, 10).',
+ steps:['Dribble toward the far end at medium pace.','Just before x = 20, do the turn of the round and dribble back to x = 10.','Turns, in order: (a) sole drag-back turn, (b) pull-back and cut away with the inside of the same foot (an L-turn), (c) Cruyff turn, (d) step-on turn (sole stops the ball, step past it, spin, take it with the other foot).','Alternate feet every rep.'],
+ dose:'4 turns × 4 reps (2 per foot) = 16 reps; walk back between reps. About 8 min.',
+ points:['Plant your standing foot beside the ball, not behind it.','Turn your hips and shoulders with the ball so your body shields it.','Accelerate for 2–3 steps after every turn.'],
+ mistakes:['Turning slowly, then jogging away.','Losing the ball behind you because the drag is too strong.'],
+ easier:'Walk the turns, then build speed.',harder:'A partner jogs at you from x = 25; you must turn before they reach x = 21.',
+ anim:{title:'Sole drag-back turn (right foot)',dur:5.3,cones:[[10,8],[10,12],[20,8],[20,12]],
+  actors:{A:{r:'me',at:[10,10],f:0,k:[[2,19.4,10,'jog'],[2.3,19.6,10,'soft',{f:0}],[2.7,19.5,10,'soft',{f:179}],[3,19,10,'jog'],[5,12,10,'run']]}},
+  ball:{at:[10.5,10],segs:[[0,2,'drib','A'],[2,2.3,'stop','A',null,'R'],[2.3,2.7,'sole','A',[19.2,10],'R'],[2.7,3,'touch','A',[18.5,10],'R'],[3,5,'drib','A']]},
+  phases:[[0,2,'Approach','A dribbles from (10, 10) to (19.4, 10)'],[2,2.3,'Plant','Left foot plants beside the ball; right sole on top'],[2.3,2.7,'Drag and spin','Right sole drags the ball back; body spins 180°'],[2.7,3,'Push away','Next touch pushes the ball toward x = 10'],[3,5,'Accelerate out','Dribble back to (12, 10)']]}},
+
+{id:'3.3',name:'Cone slalom with sole and both feet',cat:C3,role:'both',min:1,players:'Solo or 2–4 in a line',diff:2,
+ improves:'Quick feet, fast small touches at speed. Especially for the LW.',space:'15 m × 3 m',equip:'7 cones, 1 ball each',
+ setup:'6 cones in a line on y = 10 at x = 10, 11.5, 13, 14.5, 16, 17.5 (1.5 m apart). Finish cone at (22.5, 10).',
+ steps:['Run 1: weave with inside and outside of the right foot only.','Run 2: same with the left foot only.','Run 3: sole rolls: roll the ball sideways across the line with the sole between each pair of cones.','Run 4: inside of both feet (“V cuts”).','After the last cone, accelerate with the ball to the finish cone.'],
+ dose:'2 rounds of the 4 runs (8 runs), 30 s rest between runs.',
+ points:['One touch for every step near the cones.','Head up after the last cone and burst out.','Body lean goes with the direction of each touch.'],
+ mistakes:['Big touches that hit the cones.','Slowing down after the last cone; the burst out is part of the drill.'],
+ easier:'Cones 2 m apart.',harder:'Cones 1 m apart, or a partner times you and you race the clock.',
+ anim:{title:'Run 1 (right foot inside-outside)',dur:6.6,cones:[[10,10],[11.5,10],[13,10],[14.5,10],[16,10],[17.5,10],[22.5,10]],
+  actors:{A:{r:'me',at:[8,10],f:0,k:[[.6,9.3,10.15,'jog'],[1.05,10,9.4,'jog'],[1.8,11.5,10.6,'jog'],[2.6,13,9.4,'jog'],[3.4,14.5,10.6,'jog'],[4.2,16,9.4,'jog'],[4.9,17.5,10.6,'jog'],[5.2,18.2,10.1,'jog'],[6.3,22.5,10,'sprint']]}},
+  ball:{at:[8.4,10],segs:[[0,5.1,'drib','A'],[5.1,5.8,'touch','A',[20.6,10],'R'],[5.8,6.3,'drib','A']]},
+  phases:[[0,.6,'Start','A dribbles from (8, 10) to the first cone'],[.6,5,'Weave','Outside touch right, inside touch left around each cone'],[5,6.3,'Burst out','Big push and sprint to (22.5, 10)']]}},
+
+{id:'3.4',name:'Ball manipulation box, then “avoid the press”',cat:C3,role:'both',min:6,players:'Group of 6 (4 attackers, 2 defenders)',diff:2,
+ improves:'Using your moves when someone is actually trying to take the ball.',space:'15 m × 15 m',equip:'4 cones, 4 balls',
+ setup:'Box with corner cones at (12.5, 2.5), (27.5, 2.5), (27.5, 17.5), (12.5, 17.5). Attackers start inside with a ball each; defenders start at (20, 2.5) and (20, 17.5).',
+ steps:['Part A (no defenders): everyone dribbles freely. On a call, do the move: “stop” (sole on ball), “turn” (drag-back), “change” (switch feet), “skill” (any move you like).','Part B: the 2 defenders come in and try to kick balls out of the box.','A player who loses their ball does 5 toe taps outside the box, then comes back in.','60 s rounds; swap defenders every round.'],
+ dose:'Part A 4 min. Part B 5 rounds × 60 s, 60 s rest. About 13 min.',
+ points:['Head up so you see defenders before they arrive.','Shield with your body; keep the ball on the far foot from the defender.','Use body feints and turns, then accelerate into free space.'],
+ mistakes:['Dribbling into crowded areas.','Doing a trick when a simple turn away would work.'],
+ easier:'1 defender only.',harder:'3 defenders, or make the box 12 m × 12 m.',
+ anim:{title:'One escape from a defender',dur:4.3,cones:[[12.5,2.5],[27.5,2.5],[27.5,17.5],[12.5,17.5]],zones:[[12.5,2.5,27.5,17.5]],
+  actors:{A:{r:'me',at:[15,10],f:0,k:[[1.5,18,10,'jog'],[2,18.05,10,'soft',{f:0}],[2.8,17.6,9.7,'soft',{f:215}],[4,14,7,'run']]},
+   D:{r:'opp',at:[22,12],f:205,idle:'ready',k:[[.8,22,12,'ready'],[2,18.7,10.4,'run'],[2.6,18.4,10.1,'brake'],[4,16.5,8.5,'run']]}},
+  ball:{at:[15.4,10],segs:[[0,2,'drib','A'],[2,2.4,'sole','A',[17.6,10],'R'],[2.4,2.8,'touch','A',[17,9.3],'R'],[2.8,4,'drib','A']]},
+  phases:[[0,1.5,'Dribble','A dribbles from (15, 10) to (18, 10)'],[.8,2,'Defender closes','D runs from (22, 12) toward A'],[2,2.4,'Sole stop and drag','A puts the sole on the ball and drags it back'],[2.4,2.8,'Turn away','A turns, body between ball and D'],[2.8,4,'Accelerate away','A dribbles into space']]}},
+/* ---------- 4. Attacking 1v1s and dribbling moves ---------- */
+{id:'4.1',name:'Move menu: cone, then passive, then live defender',cat:C4,role:'LW',min:2,players:'Pairs',diff:2,
+ improves:'3–4 reliable moves on both sides. LW mainly; CM for escaping a presser.',space:'15 m × 6 m',equip:'3 cones, 1 ball',
+ setup:'Start cone at (15, 16). “Defender” cone at (24, 16). Finish line between cones at (30, 13) and (30, 19). Left touchline is y = 20.',
+ steps:['Stage 1 (cone): dribble at the cone at speed, do the move about 1 m before it, accelerate to the finish line.','Stage 2 (passive defender): partner stands at the cone and moves only half-speed, sideways.','Stage 3 (live): partner defends at full effort, but only after your first touch.','Moves: stop-start, shoulder drop, step-over and go, inside-inside shift. Do each move to both sides.'],
+ dose:'Stage 1: 4 moves × 4 reps (2 each side). Stage 2: 8 reps, mixing moves. Stage 3: 6 reps each role. 30 s rest between reps. About 15 min.',
+ points:['Drive at the defender fast enough to make them back off or commit.',"Do the move at 1–2 m, when they can't recover in time.",'The burst after the move is the move: at least 3 fast touches into space.'],
+ mistakes:['Doing the move too early (3–4 m away), which gives the defender time to readjust.','Doing the move and then slowing down to look at what happened.'],
+ easier:'Walk through each move, then jog.',harder:'Defender starts 2 m closer, or the channel is narrowed to 4 m (y = 14 to 18).',
+ anim:{title:'Step-over and go outside (Stage 2)',dur:4.1,cones:[[15,16],[30,13],[30,19]],
+  actors:{A:{r:'me',at:[15,16],f:0,k:[[1.6,22.5,16,'run'],[2,22.9,16.05,'brake',{f:0}],[2.3,23.7,16.7,'run'],[3.8,30,18,'sprint']],acts:[[1.6,'stepover','R',.4]]},
+   D:{r:'opp',at:[24,16],f:180,idle:'ready',k:[[1.8,24,16,'ready'],[2.2,24,15.3,'shuffle'],[2.5,24.1,15.4,'ready'],[3.8,25,16.5,'jog']]}},
+  ball:{at:[15.5,16],segs:[[0,1.6,'drib','A'],[1.6,2,'roll',null,[23.25,16]],[2,2.6,'touch','A',[25.3,17.8],'L'],[2.6,3.8,'drib','A']]},
+  phases:[[0,1.6,'Drive','A dribbles from (15, 16) to (22.5, 16)'],[1.6,2,'Step-over','Right foot circles over the ball from outside to inside; shoulders dip as if going inside (toward y = 13)'],[1.8,2.2,'Defender shifts','D at (24, 16) leans and steps toward y = 15.3'],[2,2.3,'Take outside','Outside of the left foot pushes the ball toward (25, 18)'],[2.3,3.8,'Burst','A sprints past to (30, 18)']]}},
+
+{id:'4.2',name:'1v1 down the wing channel',cat:C4,role:'LW',min:2,players:'Pairs or a group rotating',diff:3,
+ improves:"Beating a defender in the LW's real zone. The CM plays the defender here and trains section 5 at the same time.",space:'15 m × 8 m',equip:'4 cones, balls',
+ setup:'Channel along the left touchline: cones at (20, 12), (20, 20), (35, 12), (35, 20). Attacker A at (20, 16). Defender D at (30, 16) with the ball.',
+ steps:['D passes to A, then steps in to defend.','A scores by stopping the ball with the sole on the end line (x = 35) inside the channel.','D scores by winning the ball and dribbling it back over x = 20.','Rep ends after about 8 s, or on a score or the ball leaving the channel. Swap roles.'],
+ dose:'8 reps each role, 30–45 s rest. About 12 min.',
+ points:['First touch forward, out of your feet, toward the defender.',"Attack the side of the defender's front foot; they must turn their hips to follow.",'Sell the fake with head and shoulders, keep your hips still until the go.'],
+ mistakes:['Receiving and stopping the ball dead, which lets the defender set up.','Always going outside; mix it, or good defenders will show you the line and wait.'],
+ easier:"Defender may only start moving after A's first touch.",harder:'Narrow the channel to 6 m (y = 14 to 20), or defender starts at x = 27.',
+ anim:{title:'One successful rep',dur:5.3,cones:[[20,12],[20,20],[35,12],[35,20]],zones:[[20,12,35,20]],
+  actors:{A:{r:'me',at:[20,16],f:0,idle:'ready',k:[[.8,20,16,'ready'],[1.2,20.9,16,'jog'],[2.5,25.5,16.5,'run'],[2.9,26.2,16.55,'brake',{f:0}],[3.2,27.3,17.4,'run'],[4.6,34.6,18.5,'sprint'],[5,34.7,18.5,'soft']],acts:[[2.5,'feint','R',.4]]},
+   D:{r:'opp',at:[30,16],f:180,k:[[.8,27,16,'jog'],[1.2,27.2,16,'ready',{f:180}],[2.5,27.5,16,'jockey',{f:170}],[2.9,27.5,15.2,'shuffle',{f:180}],[3.3,27.7,15.6,'ready'],[4.6,33,17.5,'run']]}},
+  ball:{at:[29.6,16],segs:[[0,.8,'pass','D',[20.4,16]],[.8,1.2,'touch','A',[21.5,16]],[1.2,2.5,'drib','A'],[2.5,2.9,'roll',null,[26.7,16.6]],[2.9,3.4,'touch','A',[28.7,18.2],'L'],[3.4,4.6,'drib','A'],[4.6,5.2,'stop','A',null,'R']]},
+  phases:[[0,.8,'Pass in','D passes 10 m from (30, 16) to A; D steps forward to (27, 16)'],[.8,1.2,'First touch','A touches forward to (21.5, 16)'],[1.2,2.5,'Drive','A drives to (25.5, 16.5); D jockeys back to (27.5, 16)'],[2.5,2.9,'Feint','A drops the right shoulder as if cutting inside; D shifts toward y = 15'],[2.9,3.2,'Go outside','A pushes the ball down the line with the outside of the left foot'],[3.2,4.6,'Burst and stop','A sprints to (35, 18.5) and stops the ball with the sole; D chases to (33, 17.5)']]}},
+
+{id:'4.3',name:'Continuous 1v1 with two gates',cat:C4,role:'both',min:2,players:'Pairs (a group of 4 rotates 2 pairs)',diff:3,
+ improves:'Attacking the space the defender leaves; changing direction at speed.',space:'15 m × 10 m',equip:'8 cones, balls',
+ setup:'Box x = 12.5 to 27.5, y = 5 to 15. Two 2 m gates on each end line: at x = 27.5 between y = 6 and 8, and between y = 12 and 14; the same two gates at x = 12.5.',
+ steps:['A starts at (12.5, 10) with the ball, D at (27.5, 10).','A attacks the far end and scores by dribbling through either gate. D defends both.','If D wins the ball, D attacks the opposite gates straight away.','Play 30 s, then rest.'],
+ dose:'6 × 30 s, 60–90 s rest (rotate pairs). About 10 min.',
+ points:['Head up: see which gate the defender is protecting.','Shape to go one way, then change direction to the open gate.',"Accelerate through the gate; don't walk the ball in."],
+ mistakes:['Committing to one gate from the start.','Switching off after losing the ball; react and defend at once.'],
+ easier:'Gates 3 m wide.',harder:'Only one gate on each end (y = 9 to 11), or one-touch finish through the gate.',
+ anim:{title:'One score',dur:4.3,cones:[[27.5,6],[27.5,8],[27.5,12],[27.5,14],[12.5,6],[12.5,8],[12.5,12],[12.5,14]],zones:[[12.5,5,27.5,15]],
+  actors:{A:{r:'me',at:[12.5,10],f:0,k:[[1.8,20,11.5,'run'],[2,20.2,11.5,'soft',{f:10}],[2.5,20.5,10.6,'soft',{f:-40}],[4,28,7,'sprint']]},
+   D:{r:'opp',at:[27.5,10],f:180,idle:'ready',k:[[2,23,12,'jog'],[2.6,23.2,11.6,'ready',{f:200}],[4,25,8.8,'run']]}},
+  ball:{at:[13,10],segs:[[0,2,'drib','A'],[2,2.5,'sole','A',[20.55,10.05],'R'],[2.5,2.8,'touch','A',[21.6,9.5],'R'],[2.8,4,'drib','A']]},
+  phases:[[0,1.8,'Drive','A dribbles from (12.5, 10) to (20, 11.5), aiming at the top gate'],[0,2,'Defender covers','D moves from (27.5, 10) to (23, 12)'],[2,2.5,'Drag across','A drags the ball across with the sole toward y = 8'],[2.5,4,'Accelerate','A sprints to the bottom gate at (27.5, 7)']]}},
+
+{id:'4.4',name:'Beat one, outrun the chaser',cat:C4,role:'LW',min:4,players:'3 + goalkeeper',diff:3,
+ improves:'Using your speed straight after the move; finishing the action.',space:'25 m × 12 m',equip:'Goal (or 2 cones 3 m apart), 2 cones, balls',
+ setup:'A with the ball at (15, 16). Front defender D1 at (25, 15). Chasing defender D2 at (15, 12). Goal at x = 40 (posts y = 8.5 and 11.5) with GK.',
+ steps:["A's first touch is the trigger: D1 steps in, D2 chases from behind.",'A must beat D1 and shoot within 6 s.','Rotate: A → D2 → D1 → A.'],
+ dose:'8 reps each as attacker, 45 s rest. About 10 min.',
+ points:["Beat D1 early enough that D2 can't arrive.","After the move, take the ball across D2's path so they must run around you.",'Shoot as soon as the goal is open (section 7).'],
+ mistakes:['Too many touches after beating D1, letting D2 catch up.','Running in a straight line wide when the goal is to the right.'],
+ easier:'D2 starts 4 m further back, at (11, 12).',harder:'4 s time limit, or D2 starts level with A.',
+ anim:{title:'One rep',dur:4,cones:[[15,16],[15,12]],
+  actors:{A:{r:'me',at:[15,16],f:0,k:[[1.4,22,15.5,'run'],[1.9,23.7,14.8,'run'],[3,29,12,'run'],[3.5,29.6,11.8,'jog']],acts:[[1.3,'feint','L',.35]]},
+   D1:{r:'opp',at:[25,15],f:180,idle:'ready',k:[[1.4,24,15.5,'jog'],[1.9,24.2,16,'shuffle',{f:180}],[3.5,27,14,'run']]},
+   D2:{r:'opp',at:[15,12],f:0,k:[[3.5,26,13,'sprint']]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[3,39.2,10.2,'shuffle'],[3.5,38.8,10.5,'ready']],acts:[[3.15,'dive','L',.5]]}},
+  ball:{at:[15.5,16],segs:[[0,1.45,'drib','A'],[1.45,1.9,'touch','A',[24.5,14.5],'R'],[1.9,3,'drib','A'],[3,3.5,'shot','A',[40.5,8.95],'R',{h:.45}]]},
+  phases:[[0,1.4,'Drive','A dribbles from (15, 16) to (22, 15.5); D2 chases from (15, 12)'],[1.4,1.9,'Move','A shoulder-drops outside, cuts inside with the right foot'],[1.9,3,'Cut across',"A moves to (29, 12), across D2's line"],[3,3.5,'Shot','A shoots with the right foot from (29, 12) to the far post']]}},
+
+/* ---------- 5. Defending 1v1s and tracking runners ---------- */
+{id:'5.1',name:'Shadow jockey',cat:C5,role:'CM',min:2,players:'Pairs',diff:1,
+ improves:'Body shape, distance, footwork going backwards. CM mainly; LW for pressing.',space:'12 m × 4 m',equip:'4 cones, 1 ball',
+ setup:'Channel with cones at (14, 8), (14, 12), (26, 8), (26, 12). Attacker A with ball at (14, 10). Defender D at (17, 10), facing A. You are D.',
+ steps:['A dribbles toward x = 26, changing direction 2–3 times. No tricks yet.','D backs off, staying about 1–1.5 m away, side-on, showing A toward y = 12.','No tackling. Reset at the end and swap roles.'],
+ dose:'4 reps each role at 50% speed, then 4 reps at 75%. 20 s rest between reps. About 6 min.',
+ points:["Arm's-length distance: close enough to touch the ball in one step, far enough not to be rolled.",'Side-on, one foot in front, knees bent, weight on the balls of the feet.','Watch the ball and the hips; ignore shoulder and foot fakes.'],
+ mistakes:['Square-on stance (feet level), which lets the attacker go either way or nutmeg you.',"Crossing the feet when shuffling; you can't push off quickly from that position."],
+ easier:'Attacker walks.',harder:'Attacker at full speed; D may tackle in the last 3 m of the channel.',
+ anim:{title:'One rep',dur:4.3,cones:[[14,8],[14,12],[26,8],[26,12]],
+  actors:{A:{r:'opp',at:[14,10],f:0,k:[[2,19,10.6,'jog'],[2.4,19.9,9.95,'run'],[4,24,9.2,'jog']]},
+   D:{r:'me',at:[17,10],f:180,idle:'ready',k:[[2,20.3,10.6,'jockey',{f:140}],[2.4,21.2,10.2,'jockey',{f:215}],[4,25.3,9.4,'jockey',{f:205}]]}},
+  ball:{at:[14.4,10],segs:[[0,4,'drib','A']]},
+  phases:[[0,2,'Approach','A dribbles from (14, 10) to (19, 10.6); D backs off to (20.3, 10.6), side-on'],[2,2.4,'Attacker cuts','A cuts toward y = 8.5'],[2,2.4,'Defender pivots','D drops the back foot and turns hips to follow'],[2.4,4,'Shadow','A to (24, 9.2); D to (25.3, 9.4), still 1.3 m ahead']]}},
+
+{id:'5.2',name:'Close down and show away from goal',cat:C5,role:'CM',min:4,players:'3 + goalkeeper',diff:2,
+ improves:'Closing down on the pass, arriving balanced, forcing the attacker away from goal.',space:'18 m × 12 m',equip:'Goal, 4 cones, balls',
+ setup:'Goal at x = 40 (posts y = 8.5 and 11.5) with GK. Server S at (22, 18). Attacker A at (26, 15). Defender D at (34, 10) — that is you. Counter-gate for D: cones at (20, 9) and (20, 11).',
+ steps:['S passes to A. As the ball travels, D sprints out.','D brakes, gets side-on and shows A toward the touchline (y = 20).','A tries to beat D and shoot. If D wins the ball, D passes through the counter-gate.','Rotate S → A → D → S.'],
+ dose:'8 reps as defender, 30–40 s rest. About 12 min.',
+ points:["Sprint while the ball travels, then switch to short braking steps before the attacker's first touch.",'Approach on a slight curve to block the inside lane to goal.','Stay on your feet; delay until the attacker is forced wide or makes a mistake.'],
+ mistakes:['Arriving at full speed and getting beaten by the first touch.','Diving in when the attacker still has the ball under control.'],
+ easier:'A slower pass, or D starts at (31, 11).',harder:'Recovery version: D starts behind A at (24, 12) and must get goal-side first.',
+ anim:{title:'One rep',dur:4.3,cones:[[20,9],[20,11]],
+  actors:{S:{r:'neu',at:[22,18],f:-37},
+   A:{r:'opp',at:[26,15],f:140,idle:'ready',k:[[.9,26,15,'ready'],[1.4,26.8,15,'jog'],[2,27.6,14.3,'jog'],[3.2,31.5,18,'run'],[4,32.3,18.3,'brake']],acts:[[1.5,'feint','R',.4]]},
+   D:{r:'me',at:[34,10],f:150,k:[[.9,29.6,13,'sprint'],[1.4,28.6,14,'brake'],[2,29.2,13.3,'jockey',{f:150}],[3.2,31.8,16.6,'jockey',{f:120}],[4,32.6,17,'ready',{f:115}]]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[2,39.5,10,'ready'],[4,39,11,'shuffle']]}},
+  ball:{at:[22.4,17.7],segs:[[0,.9,'pass','S',[26.1,15]],[.9,1.4,'touch','A',[27.3,15]],[1.4,4,'drib','A']]},
+  phases:[[0,.9,'Pass and sprint','Ball travels from S to A; D sprints from (34, 10) to (29.6, 13)'],[.9,1.4,'Brake',"A's first touch to (27, 15); D takes short steps to (28.6, 14), side-on, inside foot forward"],[1.4,2,'Attacker tries inside','A shapes toward y = 12; D shuffles across to (29.2, 13.3)'],[2,3.2,'Forced wide','A goes outside to (31.5, 18); D jockeys to (31.8, 16.6)'],[3.2,4,'Poor angle','A is at a tight angle; D blocks the shot lane']]}},
+
+{id:'5.3',name:'Pounce on the cue (tackle timing)',cat:C5,role:'CM',min:2,players:'Pairs',diff:2,
+ improves:'Recognising when to tackle; clean block and poke tackles.',space:'10 m × 8 m',equip:'4 cones, 1 ball',
+ setup:'Box with cones at (15, 6), (25, 6), (25, 14), (15, 14). A with ball at (15, 10), D at (21, 10). You are D.',
+ steps:['A dribbles at D and tries to stop the ball on the far line (x = 25).','In some reps A secretly gives a cue: a heavy touch, head down, or ball on the side near D.','D jockeys and tackles only when a cue appears.','Block tackle: plant close, lock the ankle, inside of the foot through the middle of the ball. Poke tackle: from the side, toe the ball away.'],
+ dose:'3 sets × 6 reps as defender, 20 s per rep, 60 s between sets.',
+ points:['Cues: ball more than 1 m from the attacker, attacker looking down, ball on your side, attacker turning back.','Block tackle with your weight going forward, through the ball.',"After winning it, take it away at once; don't admire the tackle."],
+ mistakes:["Lunging when the ball is tight to the attacker's foot.",'Leaning back in a block tackle, which loses the ball and risks the ankle.'],
+ easier:'Attacker gives the heavy-touch cue every second rep.',harder:'Fully live, and a clean tackle scores 2 points.',
+ anim:{title:'Block tackle on a heavy touch',dur:3,cones:[[15,6],[25,6],[25,14],[15,14]],
+  actors:{A:{r:'opp',at:[15,10],f:0,k:[[1.5,19,10,'jog'],[2,19.6,10,'brake'],[2.6,19.7,10,'stand']]},
+   D:{r:'me',at:[21,10],f:180,idle:'ready',k:[[1.5,20.6,10,'jockey',{f:170}],[1.7,20.6,10,'ready',{f:180}],[1.95,20.5,10,'ready',{f:180}],[2.6,22,9,'run']],acts:[[1.95,'tackle','R',.3]]}},
+  ball:{at:[15.4,10],segs:[[0,1.5,'drib','A'],[1.5,1.75,'touch','A',[20.15,10]],[1.95,2.15,'touch','D',[20.6,9.75],'R'],[2.15,2.6,'drib','D']]},
+  phases:[[0,1.5,'Approach','A dribbles from (15, 10) to (19, 10); D jockeys to (20.6, 10)'],[1.5,1.7,'Heavy touch','Ball rolls to (20.2, 10), 1.2 m ahead of A'],[1.7,2,'Step in','D steps forward with the front foot; block tackle at (20.2, 10)'],[2,2.6,'Take away','D carries the ball to (22, 9)']]}},
+
+{id:'5.4',name:'Track the runner',cat:C5,role:'CM',min:3,players:'3 (server, runner, marker)',diff:2,
+ improves:'Man-marking, tracking blind-side runs, staying goal-side.',space:'24 m × 12 m',equip:'4 cones, balls',
+ setup:'Server S at (10, 10) with balls. End zone between x = 30 and x = 34 (cones at (30, 4), (30, 16), (34, 4), (34, 16)). Runner R at (22, 10). Marker D at (24, 10.5), goal-side (between R and the end zone). You are D.',
+ steps:['R has 6 s to get free and receive a pass inside the end zone.','S passes as soon as R looks free.','D wins by intercepting, touching the ball first, or stopping R from receiving in 6 s.','Rotate roles every 4 reps.'],
+ dose:'4 rounds × 4 reps, 30 s between reps. About 10 min.',
+ points:['Goal-side and ball-side: stand where you can see both the ball and R.','Run backwards or sideways when you can, so you never lose sight of either.',"Keep a hand's touch on R to feel when they change pace."],
+ mistakes:['Ball-watching while R runs off your blind side.','Getting tight in front of R, so they spin in behind you.'],
+ easier:'R must stay in a 10 m wide lane (y = 5 to 15).',harder:'2v2 (two runners, two markers), or R may also check back to receive and turn, and D must stop the turn.',
+ anim:{title:'Blind-side run, pass cut out',dur:3.5,cones:[[30,4],[30,16],[34,4],[34,16]],zones:[[30,4,34,16]],
+  actors:{S:{r:'neu',at:[10,10],f:0},
+   R:{r:'opp',at:[22,10],f:180,k:[[1,20,10,'jog'],[1.3,20,10.1,'plantR'],[1.9,23.6,11.8,'sprint'],[2.6,31,13,'sprint'],[3.2,32,13,'jog']]},
+   D:{r:'me',at:[24,10.5],f:180,idle:'ready',k:[[1,22,10.3,'jog'],[1.3,22,10.3,'ready',{f:180}],[2.6,30,12.3,'shuffle',{f:130}],[2.8,29.5,12.4,'shuffle',{f:160}],[3.2,28.8,12.2,'jog']]}},
+  ball:{at:[10.5,10],segs:[[1.6,2.8,'pass','S',[29.5,12.4]],[2.8,3.2,'touch','D',[28.4,12.1],'R']]},
+  phases:[[0,1,'Check','R jogs toward S to (20, 10); D follows to (22, 10.3)'],[1,1.3,'Spin','R plants and turns'],[1.3,2.6,'Blind-side run','R curves behind D to (31, 13); D opens up and runs sideways to (30, 12.3)'],[1.8,2.8,'Pass','S plays toward (31, 13)'],[2.8,3.2,'Interception','D cuts the pass out at (29.5, 12.4)']]}},
+/* ---------- 6. First touch, half-turn, scanning, passing under pressure ---------- */
+{id:'6.1',name:'Scan and receive to a gate',cat:C6,role:'CM',min:3,players:'3 (passer, receiver, caller)',diff:2,
+ improves:'Checking your shoulder, reacting to what you see, receiving across your body. CM mainly; LW too.',space:'16 m × 10 m',equip:'4 cones, balls',
+ setup:'Passer P at (12, 10). Receiver A at (20, 10), facing P. Caller C at (26, 10) behind A. Gate 1: cones at (27, 13) and (27, 15). Gate 2: cones at (27, 5) and (27, 7).',
+ steps:['A checks over both shoulders before P passes.','P passes firmly along the ground.','While the ball travels, C points to one gate.','A takes a last look, receives across the body toward that gate, and passes through it with the second touch.','Rotate roles every 10 reps.'],
+ dose:'3 rounds × 10 reps as receiver, 5–10 s between reps. About 10 min.',
+ points:['Two looks before the pass, one more as it travels.','Open your hips toward the space; receive with the foot furthest from the passer (the back foot).','First touch goes toward the gate, not under your body.'],
+ mistakes:['Looking only after you have the ball.','Stopping the ball dead, then turning.'],
+ easier:'C points before P passes.',harder:'One touch only (pass through the gate first time), or C makes a late call and adds a third, central gate at (28, 9.5)–(28, 10.5).',
+ anim:{title:'One rep to Gate 1',dur:3.2,cones:[[27,13],[27,15],[27,5],[27,7]],
+  actors:{P:{r:'mate',at:[12,10],f:0},
+   A:{r:'me',at:[20,10],f:180,idle:'soft',k:[[1,20,10,'soft',{f:180}],[1.4,20.1,10.1,'soft',{f:100}],[1.7,20.6,10.4,'jog',{f:40}],[2,20.9,10.6,'soft',{f:35}]],acts:[[0,'scan','R',.3],[.3,'scan','L',.3],[1,'scan','R',.3]]},
+   C:{r:'neu',at:[26,10],f:180,acts:[[.9,'point','R',1.4]]}},
+  ball:{at:[12.4,10],segs:[[.6,1.4,'pass','P',[20.25,10.1]],[1.4,1.7,'touch','A',[21,10.8],'R'],[1.7,2.9,'pass','A',[28.2,14.6],'R']]},
+  phases:[[0,.3,'Scan right','A turns head over the right shoulder'],[.3,.6,'Scan left','A turns head over the left shoulder'],[.6,1.4,'Pass','P passes 8 m to A'],[.9,1.2,'Call','C points at Gate 1'],[1,1.4,'Last look and open','A glances, hips open toward +x and +y'],[1.4,1.7,'Receive','Right (back) foot directs the ball to (21, 10.8)'],[1.7,2.9,'Pass through gate','A passes to (27, 14)']]}},
+
+{id:'6.2',name:'Half-turn triangle',cat:C6,role:'CM',min:3,players:'3',diff:2,
+ improves:'Receiving side-on to play forward in one movement, both feet.',space:'16 m × 12 m',equip:'3 cones, 2 balls',
+ setup:'P1 at (12, 10). A at (20, 10). P2 at (27, 15). For left-foot reps, move P2 to (27, 5).',
+ steps:['A checks away to (21, 9), then comes back to (20, 10), side-on, seeing both P1 and P2.','P1 passes to A.','A receives with the back foot across the body toward P2 and passes to P2.','P2 passes back to P1. Repeat.','First 2 minutes: 2 touches. Then 1 touch (play it round the corner).'],
+ dose:'2 × 2 min with P2 on each side, then rotate positions. About 12 min for 3 players.',
+ points:['Body half-open: chest points between P1 and P2.','Move away, then come back to make your own space before you receive.',"Pass with the inside of the foot, ankle locked, into P2's front foot."],
+ mistakes:['Facing P1 square-on, so you need two extra touches to turn.','Receiving with the front foot, which closes your body.'],
+ easier:'A receives, stops the ball with the sole, then passes.',harder:'A passive defender stands 2 m behind A and becomes active after 2 minutes.',
+ anim:{title:'One rep (2 touches)',dur:4.8,cones:[[12,10.6],[20,9.4],[27,15.6]],
+  actors:{P1:{r:'mate',at:[12,10],f:0,idle:'soft'},P2:{r:'mate',at:[27,15],f:205,idle:'soft'},
+   A:{r:'me',at:[20,10],f:180,idle:'soft',k:[[.8,21,9,'jog'],[1.4,20,10,'jog'],[2,20,10,'soft',{f:110}],[2.3,20.6,10.5,'soft',{f:40}],[3.3,20.8,10.6,'soft',{f:36}]]}},
+  ball:{at:[12.4,10],segs:[[1.2,2,'pass','P1',[20.15,10.1]],[2,2.3,'touch','A',[20.95,10.85],'R'],[2.3,3.3,'pass','A',[26.7,14.8],'R'],[3.4,4.6,'pass','P2',[12.5,10.1],'R']]},
+  phases:[[0,.8,'Check away','A moves to (21, 9)'],[.8,1.4,'Come back and open','A returns to (20, 10), side-on'],[1.2,2,'Pass in','P1 passes 8 m'],[2,2.3,'Receive','Right foot directs the ball toward (21, 11)'],[2.3,3.3,'Pass on','A passes to P2'],[3.4,4.6,'Back to start','P2 passes back to P1']]}},
+
+{id:'6.3',name:'Rondo 4v1, then 5v2',cat:C6,role:'both',min:5,players:'5 for 4v1, 7 for 5v2',diff:2,
+ improves:'Quick 1–2 touch play, scanning, body shape, angles of support. CM most.',space:'10 m × 10 m (12 m × 12 m for 5v2)',equip:'4 cones, balls',
+ setup:'Square with cones at (15, 5), (25, 5), (25, 15), (15, 15). Four attackers on the sides at (20, 5), (25, 10), (20, 15), (15, 10); they may move along their side. One defender in the middle at (20, 10).',
+ steps:['Attackers keep the ball, maximum 2 touches.','The defender swaps with the attacker who loses the ball.','10 passes in a row = 1 point.','Progression: 5v2 in a 12 m square, one attacker in the middle.'],
+ dose:'4 × 90 s, 30 s rest. About 8 min.',
+ points:['Scan before the ball arrives, so you already know your next pass.','Receive on the far foot from the defender.','Move along your line to always offer a passing lane.'],
+ mistakes:['Passing straight back to the player who passed to you.','Standing still on your line.'],
+ easier:'3 touches.',harder:'1 touch, or 12 m × 12 m with 2 defenders and 4 attackers.',
+ anim:{title:'Two passes',dur:2.1,cones:[[15,5],[25,5],[25,15],[15,15]],zones:[[15,5,25,15]],
+  actors:{A1:{r:'mate',at:[20,5],f:90,idle:'soft'},
+   A2:{r:'me',at:[25,9.5],f:180,idle:'soft',k:[[.5,25,10,'shuffle']],acts:[[.15,'scan','R',.3]]},
+   A3:{r:'mate',at:[20,15],f:-90,idle:'soft',k:[[.9,20,15,'soft'],[1.6,19.5,15,'shuffle']]},
+   A4:{r:'mate',at:[15,10],f:0,idle:'soft'},
+   D:{r:'opp',at:[20,10],f:-90,idle:'ready',k:[[.4,20,10,'ready',{f:-20}],[1.2,23,10.5,'run'],[1.6,23.3,11,'brake']]}},
+  ball:{at:[20,5.4],segs:[[0,.6,'pass','A1',[24.7,10]],[.6,.9,'touch','A2',[24.55,10.35],'R'],[.9,1.6,'pass','A2',[19.6,14.7],'R']]},
+  phases:[[0,.6,'Pass 1','A1 at (20, 5) passes to A2 at (25, 10)'],[.4,1.2,'Defender presses','D moves from (20, 10) to (23, 10.5)'],[.4,.8,'Scan and receive','A2 scans, receives on the outside foot, away from D'],[.9,1.6,'Pass 2','A2 passes diagonally to A3 at (20, 15), behind D']]}},
+
+{id:'6.4',name:'Middle player under pressure',cat:C6,role:'CM',min:4,players:'4 (2 servers, middle player, defender)',diff:3,
+ improves:"Deciding to turn, protect, or bounce it back — the CM's daily job in 5v5.",space:'16 m × 10 m',equip:'4 cones, balls',
+ setup:'Area with cones at (12, 5), (28, 5), (28, 15), (12, 15). Server S1 at (12, 10), server S2 at (28, 10). A at (21, 10). Defender D at (22.5, 10), behind A.',
+ steps:['A moves to get free; S1 passes to A.','A must get the ball to S2: turn if D is not tight; protect and roll if D is tight; or bounce it back to S1, move, and ask again.','If D wins it, D passes to either server and swaps with A.','After S2 receives, S2 starts the next rep the other way.'],
+ dose:'6 × 45 s, 45 s rest, rotate the middle player. About 9 min.',
+ points:['Check your shoulder: where is D, and how tight?','Tight: receive on the foot away from D, use the sole and your body to protect.','Loose: receive on the half-turn and play forward at once.'],
+ mistakes:['Trying to turn every time, even with D tight.','Going toward the ball in a straight line, which makes you easy to mark.'],
+ easier:'D is passive (can block but not tackle).',harder:'A has 2 touches maximum.',
+ anim:{title:'Protect and spin',dur:3.1,cones:[[12,5],[28,5],[28,15],[12,15]],
+  actors:{S1:{r:'mate',at:[12,10],f:0,idle:'soft'},S2:{r:'mate',at:[28,10],f:180,idle:'soft'},
+   A:{r:'me',at:[21,10],f:180,k:[[.5,19,10,'jog'],[1.2,19,10,'soft',{f:180}],[1.5,19,10.6,'soft',{f:110}],[2,20.5,11.8,'jog'],[2.3,20.7,11.8,'soft',{f:-12}]],acts:[[.85,'scan','R',.3]]},
+   D:{r:'opp',at:[22.5,10],f:180,k:[[.5,20.2,10,'jog'],[1.5,20.1,10.1,'ready',{f:180}],[2,20.6,10.8,'shuffle',{f:150}]]}},
+  ball:{at:[12.4,10],segs:[[.5,1.2,'pass','S1',[18.7,10.05]],[1.2,1.5,'sole','A',[19,11],'L'],[1.5,2,'drib','A'],[2,2.8,'pass','A',[27.6,10.1],'R']]},
+  phases:[[0,.5,'Show for the ball','A checks toward S1 to (19, 10); D follows to (20.2, 10)'],[.5,1.2,'Pass in','S1 passes 7 m to A'],[1,1.3,'Scan','A glances and sees D tight on the right shoulder'],[1.2,1.5,'Receive away',"A's left sole takes the ball to (19, 11)"],[1.5,2,'Spin',"A turns past D's left side to (20.5, 11.8)"],[2,2.8,'Pass to S2','A passes to (28, 10)']]}},
+
+/* ---------- 7. Shooting in tight spaces ---------- */
+{id:'7.1',name:'Quick-fire toe-pokes and strikes',cat:C7,role:'both',min:3,players:'3+ (feeder, shooter queue, goalkeeper)',diff:2,
+ improves:'Toe-poke, low driven strike and side-foot placement, all with 1–2 touches.',space:'15 m × 16 m in front of goal',equip:'Goal, 4 cones, 6+ balls',
+ setup:'Goal at x = 40 (posts at y = 8.5 and 11.5) with GK. Shooter queue at (26, 10). Shooting zone cones at (30, 8) and (30, 12). Feeder F at (34, 16) for the first round, then (34, 4).',
+ steps:['Shooter jogs into the zone; F passes square across the front.','Round 1: one set touch, then toe-poke.','Round 2: one set touch, then low driven laces shot.','Round 3: first time, side-foot placed into a low corner.','Shooter collects a ball and rejoins the queue; F switches side each round.'],
+ dose:'3 rounds × 6 shots each. About 12 min with 3 shooters.',
+ points:['Toe-poke: plant foot beside the ball, short backswing from the knee, ankle locked, hit the middle of the ball.','Driven shot: body over the ball, laces, land on your shooting foot.','Aim low and inside the posts; low shots are hardest to save on a small goal.'],
+ mistakes:['Leaning back, which sends the ball over.','A long backswing that gives the keeper time to set.'],
+ easier:'Feeder rolls the ball slowly; no goalkeeper, aim between cones at the posts.',harder:"A defender starts at (34, 10) and closes down on the feeder's pass.",
+ anim:{title:'One toe-poke rep',dur:2.3,cones:[[30,8],[30,12]],
+  actors:{F:{r:'mate',at:[34,16],f:-118,idle:'soft'},
+   A:{r:'me',at:[27,10],f:0,k:[[.8,30.8,10.2,'jog'],[1.1,31.2,10.3,'jog'],[1.3,31.3,10.3,'soft',{f:-5}],[1.8,31.9,10.3,'jog']]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[1.3,39.5,10,'ready'],[1.7,39.6,9.3,'shuffle']],acts:[[1.32,'dive','L',.45]]}},
+  ball:{at:[33.8,15.6],segs:[[0,.8,'pass','F',[31.15,10.4]],[.8,1.1,'touch','A',[31.65,10.25],'R'],[1.3,1.7,'shot','A',[40.5,9],'R',{st:'poke',h:.22}]]},
+  phases:[[0,.8,'Run in','A jogs from (27, 10) to (30.8, 10.2); F passes from (34, 16)'],[.8,1.1,'Set touch','Ball arrives; A touches it 0.5 m forward'],[1.1,1.3,'Toe-poke','Plant left foot, short right-leg swing, toe hits ball centre'],[1.3,1.7,'Ball flight','Ball travels low to the far post']]}},
+
+{id:'7.2',name:'Cut inside from the left and shoot',cat:C7,role:'LW',min:3,players:'2 + goalkeeper (attacker, defender)',diff:2,
+ improves:"The left winger's main goal action: drive, cut onto the right foot, shoot.",space:'18 m × 12 m',equip:'Goal, 2 cones, balls',
+ setup:'Goal at x = 40 with GK. A with the ball at (22, 17). “Defender” cone at (29, 15.5); later replaced by a live defender D starting at (30, 15).',
+ steps:['A dribbles at speed toward the cone.','About 1 m before it, A cuts inside with the right foot (inside cut or sole drag).','Second touch sets the ball across, about 30–40 cm in front of the right foot.','Shoot: curl to the far post, or drive at the near post if the keeper has moved across.','Reps 1–5 against the cone, reps 6–10 against a live defender.'],
+ dose:'10 reps, 30 s rest between reps. About 8 min.',
+ points:['Drive at the defender first; the cut works because they are backing off.','The set touch goes slightly forward and across, never backward.',"Shoot early: as soon as you see the goal past the defender's hip."],
+ mistakes:['Cutting in too early (far from the defender), so they simply step across.','Taking a third and fourth touch while the keeper and defender reset.'],
+ easier:'No goalkeeper; aim at a target between the far post and a cone at (40, 9.5).',harder:'D starts goal-side at (31, 13) and you also have the option to go outside down the line.',
+ anim:{title:'Cut and far-post curl',dur:3.9,cones:[[29,15.5]],
+  actors:{A:{r:'me',at:[22,17],f:0,k:[[1.6,27.6,16.4,'run'],[2,28.6,15.2,'run'],[2.6,30.6,13.2,'jog'],[2.9,31,12.95,'soft',{f:-22}],[3.5,31.3,12.85,'soft']]},
+   GK:{r:'gk',at:[39.5,10.5],f:180,idle:'ready',k:[[2.9,39.5,10.5,'ready'],[3.5,39.6,9.4,'shuffle']],acts:[[3,'dive','L',.5]]}},
+  ball:{at:[22.5,17],segs:[[0,1.6,'drib','A'],[1.6,2,'touch','A',[29,14.8],'R'],[2,2.6,'touch','A',[31.2,12.8],'R'],[2.9,3.5,'shot','A',[40.5,8.9],'R',{st:'curl',h:.55,c:-.9}]]},
+  phases:[[0,1.6,'Drive','A dribbles from (22, 17) to (27.6, 16.4)'],[1.6,2,'Cut','Inside of the right foot cuts the ball to (29, 14.8)'],[2,2.6,'Set touch','A moves to (30.6, 13.2), ball set in front of the right foot'],[2.6,2.9,'Shot','Left foot plants, body opens, inside of the right foot curls'],[2.9,3.5,'Ball flight','Ball bends low inside the far post']]}},
+
+{id:'7.3',name:'Near post or cut-back',cat:C7,role:'LW',min:4,players:'3 + goalkeeper (passer, runner, finisher)',diff:2,
+ improves:'The early near-post shot; spotting when the keeper has covered it and cutting back instead.',space:'16 m × 12 m',equip:'Goal, 2 cones, balls',
+ setup:'Goal at x = 40 with GK. Passer P at (24, 14). Runner A starts at (27, 17). Teammate T starts at (30, 8) and arrives at the penalty spot area.',
+ steps:["A sprints down the left channel; P passes into A's path.",'A takes one touch toward goal.','If the near post is open: shoot low and hard at the near post, first or second touch.','If the keeper covers the near post: cut the ball back to T arriving at (33, 10), who finishes first time.','Rotate P → A → T → P.'],
+ dose:'8 reps as A, 30 s rest. About 10 min.',
+ points:["Look at the keeper's position before your shooting touch.",'Near-post shot: low, hard, toe-poke or laces; aim between keeper and post.','Cut-back: firm, along the ground, into the space T is running into.'],
+ mistakes:['Always shooting, even when the keeper has the near post closed.','Dribbling closer and closer until the angle disappears.'],
+ easier:'GK stays in the middle of the goal; A always shoots.',harder:'Add a recovering defender who starts at (24, 12).',
+ anim:{title:'Near-post shot',dur:2.2,
+  actors:{P:{r:'mate',at:[24,14],f:20,idle:'soft'},
+   A:{r:'me',at:[27,17],f:0,k:[[.9,31.7,17.15,'sprint'],[1.3,33.6,16.6,'run'],[1.8,34.6,16.3,'brake']]},
+   T:{r:'mate',at:[30,8],f:30,k:[[1.7,33,10,'run']]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[.9,39.5,10,'ready'],[1.2,39.4,10.9,'shuffle'],[1.7,39.4,10.9,'ready']],acts:[[1.45,'dive','R',.4]]}},
+  ball:{at:[24.4,14.1],segs:[[0,.9,'pass','P',[32.15,17.1]],[.9,1.25,'touch','A',[34,16.45],'R'],[1.3,1.7,'shot','A',[40.5,11.2],'R',{st:'laces',h:.25}]]},
+  phases:[[0,.9,'Run and pass',"A runs from (27, 17) to (31.5, 17.2); P's pass travels toward (32.5, 17)"],[.9,1.1,'Touch','A touches the ball forward-inside to (34, 16.4)'],[.9,1.2,'Keeper moves','GK slides from (39.5, 10) toward (39.4, 10.9)'],[1.1,1.4,'Shot','A drives low at the near post before GK is set'],[1.4,1.7,'Ball flight','Ball goes in at (40, 11.2)']]}},
+
+{id:'7.4',name:'Finishing game: 2v2 with keepers',cat:C7,role:'both',min:6,players:'4 + 2 goalkeepers (6), extra players rotate in',diff:3,
+ improves:'Shooting volume and speed under real pressure.',space:'20 m × 20 m',equip:'2 goals (or cone goals 3 m wide), 4 cones, balls',
+ setup:'Half pitch, x = 20 to 40, y = 0 to 20. Goal at x = 40 (posts y = 8.5 and 11.5) and a cone goal at x = 20 (cones at y = 8.5 and 11.5). One GK in each.',
+ steps:['2v2. Keepers restart play by rolling the ball out.','First-time goal = 2. Toe-poke goal = 2. Other goals = 1.','Spare balls next to each goal for fast restarts.','Rotate the pairs and keepers every game.'],
+ dose:'5 games × 2 min, 1 min rest. About 15 min.',
+ points:["If you can see a low corner and you're within about 10 m, shoot.",'Prepare your body before the ball arrives so the first touch is the shot or sets the shot.','Follow every shot in for rebounds.'],
+ mistakes:['One more pass when the shot is on.','Shooting high; low shots beat keepers on small goals.'],
+ easier:'2v1 (one defender).',harder:'3v3, or a 3-touch limit per player.',
+ anim:{title:'One goal',dur:2.5,cones:[[20,8.5],[20,11.5]],zones:[[20,0,40,20]],
+  actors:{GK:{r:'gk',at:[20.5,10],f:-30,idle:'soft'},
+   A1:{r:'mate',at:[26,6],f:200,idle:'soft',k:[[.6,26,6,'soft',{f:200}],[.75,26.1,6.1,'soft',{f:50}],[1.3,27,6.3,'jog']]},
+   A2:{r:'me',at:[30,13],f:-45,k:[[1.2,31,12,'jog'],[1.5,31.2,11.95,'soft',{f:-18}],[2.1,31.7,11.8,'jog']]},
+   D1:{r:'opp',at:[30,8],f:200,idle:'ready',k:[[.4,30,8,'ready'],[1,27.5,6.8,'sprint'],[1.4,27.3,6.7,'brake']]},
+   D2:{r:'opp',at:[33,11],f:180,idle:'ready',k:[[1.5,32.4,11,'shuffle'],[2,32.5,10.9,'ready']]},
+   GK2:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[1.5,39.5,10,'ready'],[2,39.5,9.5,'shuffle']],acts:[[1.55,'dive','L',.45]]}},
+  ball:{at:[20.9,9.8],segs:[[0,.6,'pass','GK',[25.9,6.1],'R',{st:'hand'}],[.75,1.5,'pass','A1',[31.5,11.85],'R'],[1.5,2,'shot','A2',[40.5,9],'R',{h:.25}]]},
+  phases:[[0,.6,'Roll-out','GK at (20.5, 10) rolls to A1 at (26, 6)'],[.4,1,'Press','D1 closes from (30, 8) to (27.5, 6.8)'],[.6,1.5,'Pass','A1 passes to A2 at (31, 12)'],[1.2,1.5,'First-time shot','A2 shoots first time with the right foot'],[1.5,2,'Ball flight','Low into the far corner at (40, 9.0)']]}},
+/* ---------- 8. Decision-making: shoot, dribble or pass ---------- */
+{id:'8.1',name:'2v1 to goal',cat:C8,role:'both',min:4,players:'3 + goalkeeper',diff:2,
+ improves:'Reading the defender to choose pass or go.',space:'20 m × 20 m',equip:'Goal, 3 cones, balls',
+ setup:'Goal at x = 40 with GK. Attacker A1 (the LW) with ball at (20, 16). Attacker A2 at (20, 6). Defender D at (30, 10).',
+ steps:['A1 dribbles at D; A2 runs forward in support.','If D comes to A1: pass to A2. If D stays with A2: A1 goes and shoots.','Attack must finish within 8 s. If D wins it, D scores by dribbling over x = 20.','Rotate roles every 4 reps; swap sides so you also attack from the right.'],
+ dose:'3 rounds × 4 reps each as A1, 30 s rest. About 10 min.',
+ points:['Dribble straight at the defender to force a decision.',"Watch the defender's hips: hips turned toward you = pass.","Pass into your teammate's running path, not to their feet."],
+ mistakes:['Passing too early, before the defender commits.','Drifting wide with the ball, which lets one defender cover both of you.'],
+ easier:'D starts passive for the first 2 reps.',harder:'A second defender chases from (15, 10) when the rep starts, so you must decide fast.',
+ anim:{title:'Defender commits, pass and finish',dur:2.8,
+  actors:{A1:{r:'me',at:[20,16],f:0,k:[[1.5,26,14.5,'run'],[1.9,26.7,14.2,'jog'],[2.4,27,14,'jog']]},
+   A2:{r:'mate',at:[20,6],f:0,k:[[1.5,26,8,'run'],[1.9,28.7,8.9,'sprint'],[2.4,29.3,8.9,'brake']]},
+   D:{r:'opp',at:[30,10],f:180,idle:'ready',k:[[1,30,10,'ready',{f:160}],[1.6,28.5,12.5,'run'],[2.4,28.4,12.3,'ready']]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[1.9,39.5,10,'ready'],[2.4,39.4,9.5,'shuffle']],acts:[[2,'dive','R',.4]]}},
+  ball:{at:[20.5,16],segs:[[0,1.5,'drib','A1'],[1.5,1.9,'pass','A1',[29,9],'R'],[1.9,2.4,'shot','A2',[40.5,11],'R',{h:.3}]]},
+  phases:[[0,1.5,'Drive','A1 dribbles from (20, 16) to (26, 14.5); A2 runs from (20, 6) to (26, 8)'],[1,1.6,'Defender commits','D steps from (30, 10) toward A1, to (28.5, 12.5)'],[1.5,1.9,'Pass',"A1 passes into A2's path at (29, 9)"],[1.9,2.4,'Finish','A2 shoots first time to the far post']]}},
+
+{id:'8.2',name:'2v3: shoot or keep',cat:C8,role:'LW',min:7,players:'6 + goalkeeper (2 attackers, 1 support, 3 defenders)',diff:3,
+ improves:'Your 2v3 habit: shooting only when the shot is on, otherwise keeping the ball for support.',space:'28 m × 20 m',equip:'Goal, 2 cones, balls',
+ setup:"Goal at x = 40 with GK. A (you) with the ball at (22, 16). A2 at (22, 8). Defenders D1 (30, 14), D2 (30, 6), D3 (34, 10). Support player S at (12, 10). Defenders' counter-gate: cones at (16, 8) and (16, 12).",
+ steps:['A and A2 attack 2v3. S may join after 3 s, making it 3v3.','Scoring: goal before S joins = 2 points. Goal after S joins = 1 point. Shot that misses or is blocked = −1 point.','If defenders win the ball, they score 1 by passing through the counter-gate.','Rotate after every 4 reps.'],
+ dose:'4 rounds × 4 reps, 45 s rest. About 14 min.',
+ points:['Use the pause test: no low corner visible, no shot.','Shield with your body and play back to S as S arrives.','After passing back, move again to receive in a better spot.'],
+ mistakes:['Shooting through a crowd from outside 10 m.','Passing back and then standing still.'],
+ easier:'S joins after 1.5 s.',harder:'S joins after 5 s, so you must protect the ball longer.',
+ anim:{title:'The good decision (keep, then attack 3v3)',dur:4.1,cones:[[16,8],[16,12]],
+  actors:{A:{r:'me',at:[22,16],f:0,k:[[1.2,27,15,'run'],[1.5,27.1,15.1,'soft',{f:200}],[1.9,27.2,15.2,'soft',{f:215}],[3.6,29,15.5,'jog']]},
+   A2:{r:'mate',at:[22,8],f:0,k:[[1.8,25,7.6,'jog'],[3,31,7,'run'],[3.3,31.3,7.1,'soft',{f:15}]]},
+   S:{r:'mate',at:[12,10],f:0,k:[[1.2,17,10.5,'run'],[1.85,21,11,'run'],[3,25,10.5,'run'],[3.6,25.6,10.4,'jog']]},
+   D1:{r:'opp',at:[30,14],f:180,idle:'ready',k:[[1.2,28.2,14.8,'run'],[3.6,28.4,14.6,'ready']]},
+   D2:{r:'opp',at:[30,6],f:180,idle:'ready',k:[[1.8,30,6,'ready'],[3.6,30.5,8.2,'shuffle']]},
+   D3:{r:'opp',at:[34,10],f:180,idle:'ready',k:[[1.2,33,11.5,'shuffle'],[3.6,33,11,'ready']]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[3,39.5,10,'ready'],[3.6,39.5,9.2,'shuffle']],acts:[[3.32,'dive','L',.4]]}},
+  ball:{at:[22.5,16],segs:[[0,1.25,'drib','A'],[1.4,1.85,'pass','A',[21.45,11.1],'R'],[1.85,3,'drib','S'],[3,3.3,'pass','S',[31.25,7.15],'R'],[3.3,3.8,'shot','A2',[40.5,8.8],'R',{h:.2}]]},
+  phases:[[0,1.2,'Drive','A dribbles from (22, 16) to (27, 15); D1 closes to (28.2, 14.8); D3 shifts to (33, 11.5)'],[1.2,1.5,'No lane',"Both corners are blocked from A's view"],[1.2,1.8,'Shield and pass back','A turns, passes to S arriving at (21, 11)'],[1.8,3,'3v3','S drives forward to (25, 10.5); A2 runs to (31, 7)'],[3,3.6,'Finish','S passes to A2, who shoots low at the near post']]}},
+
+{id:'8.3',name:'3v2 waves',cat:C8,role:'both',min:6,players:'5 + goalkeeper (more rotate in)',diff:2,
+ improves:'Quick choices at speed, using width, timing the last pass.',space:'20 m × 20 m',equip:'Goal, 3 cones, balls',
+ setup:'Goal at x = 40 with GK. Attackers start on the line x = 20 at (20, 4), (20, 10) with the ball, and (20, 16). Defenders at (32, 7) and (32, 13).',
+ steps:['The middle attacker drives at the two defenders.','Attackers must finish within 8 s.','When the wave ends, the next 3 attackers go at once.','Rotate defenders every 4 waves.'],
+ dose:'12 waves (each player attacks about 6 times), 20–30 s between waves. About 10 min.',
+ points:['Middle player: drive at the gap between the defenders to pull both in.','Wide players: stay wide and slightly behind the ball, then attack the far post.','Release the ball when a defender commits to you, not later.'],
+ mistakes:["Everyone running toward the ball, so there's no width.",'Wide player running offside-style ahead of the ball and receiving with their back to goal.'],
+ easier:'3v1.',harder:'A third defender recovers from (20, 0) when the wave starts.',
+ anim:{title:'One wave',dur:3.4,cones:[[20,4],[20,10],[20,16]],
+  actors:{M:{r:'mate',at:[20,10],f:0,k:[[1.4,27,10,'run'],[2.6,28,10,'jog']]},
+   LW:{r:'me',at:[20,16],f:0,k:[[1.4,28,16,'run'],[2,30,15.8,'run'],[2.6,31,15.5,'jog']]},
+   RW:{r:'mate',at:[20,4],f:0,k:[[1.4,28,4,'run'],[2.6,33,6,'sprint'],[3,33.5,6.3,'brake']]},
+   D1:{r:'opp',at:[32,13],f:180,idle:'ready',k:[[1,32,13,'ready'],[1.6,29,11,'run'],[2.6,29.6,12.5,'jog']]},
+   D2:{r:'opp',at:[32,7],f:180,idle:'ready',k:[[1.4,32,7,'ready'],[2.6,33.7,8.8,'shuffle']]},
+   GK:{r:'gk',at:[39.5,10],f:180,idle:'ready',k:[[1.4,39.5,10,'ready'],[2,39.4,10.8,'shuffle'],[2.6,39.4,10.3,'shuffle']],acts:[[2.65,'dive','L',.4]]}},
+  ball:{at:[20.5,10],segs:[[0,1.4,'drib','M'],[1.4,2,'pass','M',[30.4,15.7],'R'],[2,2.6,'pass','LW',[33.1,6.2],'R'],[2.6,3,'shot','RW',[40.5,9.2],'R',{h:.2}]]},
+  phases:[[0,1.4,'Drive the gap','Middle attacker M dribbles from (20, 10) to (27, 10); wide players run to (28, 16) and (28, 4)'],[1,1.6,'Defender commits','D1 steps from (32, 13) to (29, 11)'],[1.4,2,'Pass wide','M passes to the LW at (30, 16)'],[2,2.6,'Square for tap-in','LW passes across to the far runner at (33, 6), who scores']]}},
+
+{id:'8.4',name:'Trust game (4v4 or 5v5)',cat:C8,role:'both',min:10,players:'8–10 + 2 goalkeepers',diff:2,
+ improves:'The habits teammates trust: reaction after losing the ball, safe play under pressure, picking the best chance.',space:'40 m × 20 m',equip:'2 goals, 4 cones, balls',
+ setup:'Full pitch, goals at x = 0 and x = 40 (posts at y = 8.5 and 11.5).',
+ steps:['Normal game. Goal = 2 points.','Winning the ball back within 5 s of losing it = 1 point.','Assist from a pass to a better-placed teammate = 1 bonus point.','After the game, each player scores themselves 0–2 on the trust checklist: always available · simple under pressure · five-second reaction · tracked back · talked · picked the best chance.'],
+ dose:'3 × 5 min, 2 min rest. About 19 min.',
+ points:['Lose it, react: the nearest player presses, others cut passing lanes.',"When you don't have the ball, always give the ball carrier an angle.",'When a teammate is in a better spot, use them.'],
+ mistakes:['Complaining after losing the ball instead of pressing.',"Hiding behind an opponent so you can't receive."],
+ easier:'6 s regain window.',harder:'3 s regain window, or 2-touch limit in your own half.',
+ anim:{title:'A 5-second regain',dur:3.7,
+  actors:{O:{r:'opp',at:[28,12],f:200,k:[[1,27.6,11.8,'jog'],[2.3,27.25,11.65,'jog'],[3,27,11.4,'stand']]},
+   O2:{r:'opp',at:[21.5,8],f:20,idle:'soft'},
+   A:{r:'me',at:[26.5,13.5],f:0,k:[[1,28.4,12.4,'sprint'],[2.3,27.3,12.05,'jockey',{f:220}],[2.6,27.35,12.1,'ready'],[3.4,28.6,13.2,'run']],acts:[[2.3,'tackle','R',.3]]},
+   T:{r:'mate',at:[24,8],f:45,k:[[1.2,25.5,10,'run'],[3,25.5,10,'ready',{f:'O'}]]}},
+  ball:{at:[28,11.9],segs:[[0,2.3,'drib','O'],[2.3,2.6,'touch','A',[27.5,12.35],'R'],[2.6,3.4,'drib','A']]},
+  phases:[[0,.3,'Ball lost','Opponent O intercepts at (28, 12)'],[0,1,'Immediate press','Nearest player A sprints from (26.5, 13.5) to (28.4, 12.4)'],[0,1.2,'Cut the lane','Teammate T steps from (24, 8) to (25.5, 10) to block the pass back'],[1,2.5,'Regain','O is forced to dribble; A tackles at (27, 11.5)']]}},
+
+/* ---------- 9. Conditioning for 5v5 ---------- */
+{id:'9.1',name:'Repeated shuttle sprints',cat:C9,role:'both',min:1,players:'Solo or 2–3 lanes at once',diff:3,
+ improves:'Sprinting again and again with short rest, the 5v5 pattern.',space:'15 m × 10 m',equip:'6 cones',
+ setup:'Three lanes. Start cones at (5, 6), (5, 10), (5, 14). Turn cones at (15, 6), (15, 10), (15, 14).',
+ steps:['Sprint 10 m to the turn cone, touch the line with your foot, sprint back (20 m in total).','Walk back to the start. Start the next rep every 25 s (about 20 s rest).','Alternate the turning foot each rep.'],
+ dose:'2 sets × 6 reps, 3 min easy walking between sets. Once a week. Never on the day before a game.',
+ points:["Every rep at max effort; don't save energy for later reps.",'Use the braking and turning technique from 2.3.',"Walk, don't sit, during the rest."],
+ mistakes:['Pacing yourself, which turns it into a jog.','Rounding the turn instead of braking and planting.'],
+ easier:'1 set of 5, start every 30 s.',harder:'3 sets, or dribble the ball for the first 10 m, leave it at the turn cone and sprint back.',
+ anim:{title:'One rep',dur:5.5,cones:[[5,6],[5,10],[5,14],[15,6],[15,10],[15,14]],
+  actors:{A:{r:'me',at:[5,10],f:0,k:[[1.9,14.5,10,'sprint'],[2.15,14.9,10,'brake'],[2.4,14.9,10.1,'plantL',{f:-90}],[4.2,5,10,'sprint'],[5.2,2,10,'jog']]}},
+  phases:[[0,1.9,'Sprint out','A sprints from (5, 10) to (14.5, 10)'],[1.9,2.4,'Brake and turn','Plant at (15, 10), turn 180°'],[2.4,4.2,'Sprint back','A sprints back past (5, 10)'],[4.2,5.2,'Slow down','Jog out to (2, 10), walk back']]}},
+
+{id:'9.2',name:'3v3 interval game',cat:C9,role:'both',min:6,players:'6',diff:3,
+ improves:'Aerobic fitness and repeated efforts while playing.',space:'25 m × 20 m',equip:'8 cones, 6+ balls',
+ setup:'Area x = 10 to 35, y = 0 to 20. Cone goals 2 m wide, no goalkeepers: at x = 10 between (10, 9) and (10, 11), and at x = 35 between (35, 9) and (35, 11). Spare balls along both touchlines.',
+ steps:['3v3. Score by passing the ball through the cone goal.','Ball out = a new ball from the touchline straight away.','Play hard for each bout; the rest is the rest.'],
+ dose:'4 bouts × 3 min, 2 min rest. Effort 7–8 out of 10.',
+ points:['When you lose the ball, all three press at once.','Move after every pass to make a new angle.','Shoot quickly; the small goal rewards early, accurate shots.'],
+ mistakes:['Walking during the bout.','Long pauses to fetch balls (keep spares ready).'],
+ easier:'3 bouts × 3 min, 3 min rest.',harder:'2v2 in 20 m × 15 m, or 5 bouts.',
+ anim:{title:'One attack',dur:2.9,cones:[[10,9],[10,11],[35,9],[35,11]],zones:[[10,0,35,20]],
+  actors:{A:{r:'me',at:[15,10],f:0,k:[[.8,18,10,'jog'],[2.5,19,10,'jog']]},
+   B:{r:'mate',at:[23,16],f:-45,k:[[1.4,24,15,'jog'],[2.5,24.5,14.5,'jog']]},
+   C:{r:'mate',at:[27,5],f:60,k:[[2,28.5,7.5,'run'],[2.5,29,7.8,'jog']]},
+   D1:{r:'opp',at:[25,10],f:180,idle:'ready',k:[[.8,25,10,'ready'],[1.4,24,13,'run'],[2.5,24.6,13.4,'ready']]},
+   D2:{r:'opp',at:[30,8],f:180,idle:'ready',k:[[1.4,30,8,'ready'],[2.5,29.5,8.6,'shuffle']]},
+   D3:{r:'opp',at:[21.5,9.5],f:180,idle:'ready',k:[[.8,19.8,10,'jog'],[2.5,20.2,10.2,'ready']]}},
+  ball:{at:[15.4,10],segs:[[0,.8,'drib','A'],[.8,1.4,'pass','A',[24,15.1],'R'],[1.4,2,'pass','B',[28.5,7.3],'R'],[2,2.5,'pass','C',[35.8,10],'R']]},
+  phases:[[0,.8,'Carry','A dribbles from (15, 10) to (18, 10)'],[.8,1.4,'Pass wide','A passes to B at (24, 15); D1 slides from (25, 10) to (24, 13)'],[1.4,2,'Switch','B passes across to C at (28, 7)'],[2,2.5,'Finish','C passes the ball through the goal at (35, 10)']]}},
+
+{id:'9.3',name:'2v2 burst game',cat:C9,role:'both',min:4,players:'4 (8 for two games)',diff:3,
+ improves:'Repeated 1v1 and 2v2 efforts at maximum intensity.',space:'20 m × 15 m',equip:'8 cones, balls',
+ setup:'Area x = 12 to 32, y = 2.5 to 17.5. End gates 3 m wide: at x = 12 between y = 8.5 and 11.5, and at x = 32 between y = 8.5 and 11.5.',
+ steps:["2v2. Score by dribbling through the opponents' gate.",'1 min on, 1 min off (two groups can alternate).'],
+ dose:'6 × 1 min, 1 min rest. Effort 8–9 out of 10.',
+ points:['Attack 1v1 whenever your partner draws a defender.','Defend as a pair: one presses, one covers.','Full effort for the full minute.'],
+ mistakes:['Both defenders pressing the ball, leaving the gate open.','Slowing down after 30 s.'],
+ easier:'45 s on, 75 s off.',harder:'1v1 for 40 s, 80 s off.',
+ anim:{title:'A 2v1 created inside a 2v2',dur:3.1,cones:[[12,8.5],[12,11.5],[32,8.5],[32,11.5]],zones:[[12,2.5,32,17.5]],
+  actors:{A:{r:'me',at:[16,10],f:0,k:[[1,21.5,12,'run'],[2.8,23,12,'jog']]},
+   B:{r:'mate',at:[18,6],f:0,k:[[1,22.6,6,'run'],[1.4,23,6,'jog'],[2.8,32.5,10,'sprint']]},
+   D1:{r:'opp',at:[26,11],f:180,idle:'ready',k:[[1,22.8,11.8,'run'],[2.8,23.5,11.5,'ready']]},
+   D2:{r:'opp',at:[27,8],f:180,idle:'ready',k:[[1,25,10.5,'run'],[1.5,25.2,10.2,'brake'],[2.8,30,9,'run']]}},
+  ball:{at:[16.4,10],segs:[[0,1,'drib','A'],[1,1.4,'pass','A',[23.3,6.1],'R'],[1.4,2.8,'drib','B']]},
+  phases:[[0,1,'Draw','A dribbles from (16, 10) to (21, 12); D1 and D2 both shift toward A'],[1,1.4,'Release','A passes to B at (23, 6)'],[1.4,2.8,'Go','B dribbles through the gate at (32, 10)']]}},
+
+{id:'9.4',name:'Attack and recover runs',cat:C9,role:'both',min:1,players:'Solo or pairs',diff:2,
+ improves:'Sprinting with the ball, then sprinting back to defend, the core 5v5 transition (LW attack, CM recovery).',space:'25 m × 10 m',equip:'3 cones, 1 ball',
+ setup:'Start cone at (5, 16) with a ball. Ball drop cone at (25, 16). Recovery cone at (10, 10).',
+ steps:['Dribble at speed from the start cone to the ball drop cone (20 m).','Stop the ball with the sole beside the cone.','Sprint back to touch the recovery cone (about 16 m).','Walk to the start; partner brings the ball back.'],
+ dose:'2 sets × 5 reps, start every 30 s, 3 min between sets.',
+ points:['Big, controlled touches when dribbling at speed.','Turn and sprint the instant the ball is stopped.','Recovery run on a curve to get goal-side, as in a real game.'],
+ mistakes:['Jogging the recovery run.','Losing the ball by trying small touches at full speed.'],
+ easier:'15 m dribble, 4 reps per set.',harder:'A partner starts at (25, 16) when you stop the ball and races you to the recovery cone.',
+ anim:{title:'One rep',dur:8.3,cones:[[5,16],[25,16],[10,10]],
+  actors:{A:{r:'me',at:[5,16],f:0,k:[[3.6,24.5,16,'run'],[4,24.55,16,'soft',{f:0}],[5.5,19,11.6,'sprint'],[7,10,10,'sprint'],[8,8,9.5,'jog']]}},
+  ball:{at:[5.5,16],segs:[[0,3.6,'drib','A'],[3.6,4.05,'stop','A',null,'R']]},
+  phases:[[0,3.6,'Speed dribble','A dribbles from (5, 16) to (24.5, 16)'],[3.6,4,'Sole stop','Ball stopped at (25, 16)'],[4,7,'Recovery sprint','A curves back to (10, 10)'],[7,8,'Slow down','Jog to (8, 9.5)']]}},
+/* ---------- 10. Recovery ---------- */
+{id:'10.1',name:'Cool-down jog and walk',cat:C10,role:'both',min:1,players:'Any',diff:1,
+ improves:'A calm finish: heart rate down, a moment to review the session.',space:'Pitch perimeter',equip:'None',
+ setup:'Jog around the inside of the pitch: (2, 2) → (38, 2) → (38, 18) → (2, 18) → (2, 2), about 112 m per lap.',
+ steps:['Lap 1: easy jog.','Lap 2: walk, breathing slowly.','While walking, each player names one thing that went well and one thing to work on.'],
+ dose:'2 laps, about 3 min.',
+ points:['Truly easy; you should be able to talk.','Relax the shoulders and arms.','Use the walk to reflect, not to chat about something else.'],
+ mistakes:['Turning the jog into a race.','Skipping it and sitting down straight after the hardest game block.'],
+ easier:'1 walking lap.',harder:'Not needed; this is meant to be easy.',
+ anim:{title:'One jogging lap',dur:56,
+  actors:{A:{r:'me',at:[2,2],f:0,k:[[18,38,2,'jog'],[26,38,18,'jog'],[44,2,18,'jog'],[56,2,2,'jog']]},
+   B:{r:'mate',at:[1,3.2],f:0,k:[[18,36.8,3.2,'jog'],[26,36.8,16.8,'jog'],[44,3.2,16.8,'jog'],[56,3.2,4,'jog']]}},
+  phases:[[0,18,'Bottom side','Jog from (2, 2) to (38, 2)'],[18,26,'Right end','Jog to (38, 18)'],[26,44,'Top side','Jog to (2, 18)'],[44,56,'Left end','Jog back to (2, 2)']]}},
+
+{id:'10.2',name:'Mobility circuit',cat:C10,role:'both',min:1,players:'Solo',diff:1,
+ improves:'Hip, groin, calf and back movement for the next session.',space:'3 m × 3 m',equip:'A goalpost or wall',
+ setup:'Any free spot, for example A at (20, 10); calf stretch at the goalpost at (40, 8.5).',
+ steps:["World's greatest stretch: long lunge, elbow down toward the front instep, then rotate that arm up to the sky. Each side.",'Hip 90/90 switches: sit with both knees bent at 90° to one side, rotate both knees to the other side.','Adductor rock-backs: on hands and knees, one leg straight out to the side, rock hips back and forward.','Calf stretch: hands on the post, back leg straight, heel down.'],
+ dose:'Each exercise 30–45 s per side, 1–2 rounds, about 8 min.',
+ points:['Move slowly and breathe out into each position.','Stretch to mild tension, never pain.','Same amount on both sides.'],
+ mistakes:['Bouncing into stretches.','Rushing through in 2 minutes.'],
+ easier:'20 s per side, 1 round.',harder:'Add a 5 s pause at the end of each range in the 90/90 switches.',
+ anim:{title:"One world's greatest stretch (left leg forward)",dur:5.5,
+  actors:{A:{r:'me',at:[20,10],f:0,k:[[1,20.5,10,'lunge'],[2.5,20.5,10,'lungeElbow'],[4,20.5,10,'lungeSky'],[5,20,10,'stand']]}},
+  phases:[[0,1,'Lunge','Left foot steps 1 m forward; hands down inside the left foot'],[1,2.5,'Elbow drop','Left elbow lowers toward the left instep'],[2.5,4,'Rotate','Left arm rotates up to point at the sky; eyes follow the hand'],[4,5,'Return','Hand back down, step back to standing']]}},
+
+{id:'10.3',name:'Easy ball day',cat:C10,role:'both',min:1,players:'Solo (wall) or pairs',diff:1,
+ improves:'Extra touches without extra fatigue.',space:'10 m × 5 m',equip:'1 ball, a wall or partner',
+ setup:'A at (15, 10), partner B at (25, 10) (or a wall 5 m away).',
+ steps:['5 min of sole rolls and taps from 3.1, at easy speed.','10 min of two-touch passing: receive across the body with one foot, pass with the other. Switch feet every minute.','5 min of one-touch passing, both feet.'],
+ dose:'About 20 min at effort 3–4 out of 10. On a rest day or the day after a game.',
+ points:['Keep it easy; this is not a fitness session.','Use your weaker foot at least half the time.','Check over your shoulder before each reception, even here.'],
+ mistakes:['Turning it into a hard session.','Using only the strong foot.'],
+ easier:'10 min total.',harder:'Add 2 m between you and your partner every 5 minutes.',
+ anim:{title:'Two-touch pass exchange',dur:2.6,
+  actors:{A:{r:'me',at:[15,10],f:0,idle:'soft',acts:[[0,'scan','L',.3]]},B:{r:'mate',at:[25,10],f:180,idle:'soft'}},
+  ball:{at:[17,10],segs:[[0,.3,'roll',null,[15.35,10]],[.3,.6,'touch','A',[15.4,10.5],'R'],[.6,1.4,'pass','A',[24.65,10.3],'L'],[1.4,1.8,'touch','B',[24.6,9.8],'R'],[1.8,2.6,'pass','B',[17,10],'L']]},
+  phases:[[0,.3,'Scan','A glances over the shoulder'],[.3,.6,'Receive','Right foot directs the ball across to the left side'],[.6,1,'Pass','Left foot passes 10 m to B'],[1,2.6,'B receives and returns','B two-touches it back']]}},
+
+/* ---------- 11. From defence to attack through the middle ---------- */
+{id:'11.1',name:'Get free and receive',cat:C11,role:'CM',min:3,players:'3 (A, B, GK)',diff:2,
+ improves:'Losing your marker before the pass, receiving side-on.',space:'20 m × 20 m (half pitch)',equip:'Goal, 4 cones, balls',
+ setup:'GK at (1, 10) with balls. A at (8, 10). B marks A from (9.5, 10), between A and the far end. Gate 1: cones at (18, 4) and (18, 7). Gate 2: cones at (18, 13) and (18, 16).',
+ steps:['A has 5 s to get free from B (move away, then come back at an angle, or spin in behind).','GK passes when A is free.','A scores by dribbling through either gate.','If B is tight, A passes back to GK first time and tries again (no point, no loss).',"B scores by winning the ball and shooting at GK's goal. Swap A and B after each round."],
+ dose:'3 rounds × 6 reps each as A, 30 s between reps. About 12 min.',
+ points:['Move before the pass, not when the ball is already coming.','Receive with the back foot so your body faces a gate.','Tight marker? Play it back first time and move again.'],
+ mistakes:['Standing still and waiting for the ball.','Running straight at the keeper with B on your back.'],
+ easier:'B is passive in round 1.',harder:'GK shouts which gate counts only after the pass.',
+ anim:{title:'One rep',dur:5.3,cones:[[18,4],[18,7],[18,13],[18,16]],
+  actors:{GK:{r:'gk',at:[1,10],f:0,idle:'soft'},
+   A:{r:'me',at:[8,10],f:180,idle:'ready',k:[[.8,11,13,'jog'],[1.2,11.1,13.05,'plantL'],[2.15,7,8,'sprint'],[2.3,7,8,'soft',{f:-60}],[2.6,7.6,7.6,'jog'],[5,18.5,5.5,'run']]},
+   B:{r:'opp',at:[9.5,10],f:180,idle:'ready',k:[[.8,12,12.2,'jog'],[1.2,12.1,12.3,'brake'],[2.15,9.5,9.6,'run'],[2.6,9,8.8,'run'],[5,16,7,'run']]}},
+  ball:{at:[1.4,10],segs:[[1.4,2.3,'pass','GK',[7.1,8]],[2.3,2.6,'touch','A',[8.2,7.2],'R'],[2.6,5,'drib','A']]},
+  phases:[[0,.8,'Move away','A jogs toward (11, 13); B follows to (12, 12.2)'],[.8,1.2,'Plant','A stops sharply'],[1.2,1.9,'Come back at an angle','A sprints to (7, 8); B is a step late, at (9.5, 9.6)'],[1.4,2.3,'Pass','GK passes to (7, 8)'],[2.3,2.6,'Side-on receive',"A's right (back) foot steers the ball toward Gate 1"],[2.6,5,'Dribble out','A dribbles through Gate 1 at (18, 5.5); B chases']]}},
+
+{id:'11.2',name:'Set and spin',cat:C11,role:'CM',min:3,players:'3',diff:2,
+ improves:'Escaping a tight marker with a lay-off and a spin instead of a shoulder fight. CM; also LW when checking back.',space:'22 m × 12 m',equip:'Goal, 2 cones, balls',
+ setup:'GK at (1, 10). A at (12, 10), facing GK. B touch-tight behind A at (13, 10). Finish line: cones at (22, 6) and (22, 14).',
+ steps:["GK passes firmly into A's feet.","B tight: A sets it back first time to GK, spins off B's shoulder and runs into space; GK plays it into A's run; A dribbles over the finish line.",'B leaning in or late: A takes the ball with the sole to the free side, turns and goes.','Round 1: B can only follow. Round 2 onward: B defends fully.'],
+ dose:'4 rounds × 5 reps, swap A and B each round. About 12 min.',
+ points:['Side-on, forearm out to feel B.',"The lay-off is firm, to GK's right foot, ankle locked.",'Spin away from the side B is on and sprint 3–4 m before asking again.'],
+ mistakes:['Trying to turn straight through B.','A soft lay-off that B intercepts.'],
+ easier:'B keeps hands behind the back and only follows.',harder:'GK may choose not to return the ball, so A must decide again.',
+ anim:{title:'Set and spin',dur:4.3,cones:[[22,6],[22,14]],
+  actors:{GK:{r:'gk',at:[1,10],f:0,idle:'soft',k:[[.85,1,10,'soft'],[1.5,3,11,'jog'],[2.4,3.1,11,'soft',{f:10}]]},
+   A:{r:'me',at:[12,10],f:180,idle:'ready',k:[[.8,11.6,10,'jog'],[1,11.65,10,'soft',{f:180}],[1.6,14,12.5,'run'],[2.4,16,13,'sprint'],[4,22,12,'run']]},
+   B:{r:'opp',at:[13,10],f:180,idle:'ready',k:[[.8,12.8,10,'jog'],[1.3,12.8,10,'ready'],[1.9,14,11,'run'],[4,19,11,'run']]}},
+  ball:{at:[1.4,10],segs:[[0,.8,'pass','GK',[11.2,10]],[.85,1.55,'pass','A',[3.4,11],'R'],[1.6,2.4,'pass','GK',[16,13],'R'],[2.4,4,'drib','A']]},
+  phases:[[0,.8,'Pass in','GK passes from (1, 10) to A at (11.6, 10); B tight at (12.8, 10)'],[.8,1,'Lay-off','A sets it back first time; GK steps to (3, 11)'],[1,1.6,'Spin',"A spins around B's left side to (14, 12.5); B turns late"],[1.6,2.4,'Return','GK plays it one-touch into space at (16, 13)'],[2.4,4,'Go','A dribbles over the line at (22, 12)']]}},
+
+{id:'11.3',name:'Keeper and you against one presser',cat:C11,role:'CM',min:3,players:'3',diff:3,
+ improves:'Using the keeper as the extra player; showing at angles; switching play. CM and GK.',space:'20 m × 20 m',equip:'Goal, 4 cones, balls',
+ setup:'Half pitch, x = 0 to 20. GK in goal at (0.5, 10) with the ball. A at (5, 4). Presser B at (12, 10).',
+ steps:['GK starts with the ball at his feet (feet only, no hands).','A and GK pass between them; B presses whoever has the ball.','A scores by dribbling over the halfway line (x = 20) under control.','B scores by winning the ball and shooting.','GK may hold the ball for 4 s at most (the futsal rule).'],
+ dose:'3 rounds × 3 min, 1 min rest; swap A and B each round, GK stays.',
+ points:["A: stay wide and at an angle, so B can't block both you and the pass.",'When B presses you, give it back to GK and run to the other side.',"GK: open your body before the ball comes, receive with the sole, pass to A's far foot."],
+ mistakes:["A standing in B's shadow, where the pass is blocked.",'GK taking 3–4 touches while B closes in.'],
+ easier:"B may only press after GK's first pass.",harder:'A has 3 s on the ball.',
+ anim:{title:'Switch through the keeper',dur:5.3,zones:[[0,0,20,20]],
+  actors:{GK:{r:'gk',at:[.5,10],f:-45,idle:'soft',k:[[.5,.5,10,'soft'],[1.2,1,7.5,'jog'],[2.2,1,7.5,'soft',{f:50}]]},
+   A:{r:'me',at:[5,4],f:140,idle:'soft',k:[[1.5,5,4.2,'soft',{f:150}],[2.9,6,14,'sprint'],[5,20,14,'run']]},
+   B:{r:'opp',at:[12,10],f:180,k:[[1.2,7,5.5,'sprint'],[1.5,6.3,5.2,'brake'],[2.2,6,5.5,'ready'],[2.9,6.5,7,'jog'],[5,8,9,'jog']]}},
+  ball:{at:[.9,9.8],segs:[[0,.5,'pass','GK',[4.75,4.25]],[.5,1.2,'stop','A',null,'R'],[1.2,1.6,'pass','A',[1.35,7.55],'R'],[1.6,2.2,'stop','GK',null,'R'],[2.2,2.9,'pass','GK',[5.9,13.8],'L'],[2.9,5,'drib','A']]},
+  phases:[[0,.5,'First pass','GK passes to A at (5, 4)'],[0,1.2,'Press','B sprints from (12, 10) to (7, 5.5)'],[1.2,1.5,'Back to keeper','A returns it first time; GK has stepped to (1, 7.5)'],[1.5,2.2,'Switch run','A runs across to (6, 14); B is left at (6, 5.5)'],[2.2,2.9,'Switch pass','GK passes to A at (6, 14)'],[2.9,5,'Drive','A dribbles to x = 20']]}},
+
+{id:'11.4',name:'One-touch patterns',cat:C11,role:'both',min:3,players:'3',diff:2,
+ improves:'The one-touch passing you want to play through the middle.',space:'20 m × 12 m',equip:'Goal, 3 cones, balls',
+ setup:'GK at (1, 10). A at (6, 6). B at (10, 10). “Defender” cone at (11, 8). Target gate: cones at (20, 6) and (20, 9).',
+ steps:["Pattern 1, wall pass: GK passes to A; A passes to B, runs past the cone; B returns it first time into A's path; A dribbles through the gate.","Pattern 2, set and play forward: GK passes to B (back to goal); B sets it first time to A arriving at (8, 13); B spins and runs to (17, 8); A passes first time into B's run; B dribbles through the gate.",'Swap A and B every 5 reps. GK starts every rep.'],
+ dose:'2 rounds × 5 reps of each pattern in each role. About 10 min.',
+ points:['Pass in front of the runner, not to where they are now.','Move the moment you pass.','Open your body before the ball arrives so the one-touch pass can go forward.'],
+ mistakes:['Passing behind the runner.','Stopping to watch after passing.'],
+ easier:'Two touches allowed.',harder:'All passes one touch; GK uses his left foot.',
+ anim:{title:'Pattern 1 (wall pass)',dur:4.3,cones:[[11,8],[20,6],[20,9]],
+  actors:{GK:{r:'gk',at:[1,10],f:-35,idle:'soft'},
+   A:{r:'me',at:[6,6],f:160,idle:'soft',k:[[.7,6,6,'soft',{f:160}],[1.2,6.3,6.2,'soft',{f:45}],[2.2,14,7,'sprint'],[4,20,8,'run']]},
+   B:{r:'mate',at:[10,10],f:215,idle:'soft',k:[[1.4,10,10,'soft',{f:215}],[2.2,10.5,9.5,'jog']]}},
+  ball:{at:[1.4,9.8],segs:[[0,.7,'pass','GK',[5.85,6.1]],[.7,1.2,'pass','A',[9.85,9.85],'R'],[1.4,2.2,'pass','B',[15,7],'R'],[2.2,4,'drib','A']]},
+  phases:[[0,.7,'Start','GK passes to A at (6, 6)'],[.7,1.2,'Pass to wall','A passes to B at (10, 10)'],[1.2,2.2,'Run past','A sprints past the cone to (14, 7)'],[1.4,2.2,'Return','B plays it first time into space at (15, 7)'],[2.2,4,'Go','A dribbles to (20, 8)']]}},
+
+{id:'11.5',name:"Keeper's feet",cat:C11,role:'both',min:3,players:'3',diff:2,
+ improves:'The keeper receiving with the sole, opening his body and passing with both feet under a press. Keeper focus; outfielders get passing reps.',space:'12 m × 12 m',equip:'Goal, balls',
+ setup:'GK at (2, 10). A at (10, 5). B at (10, 15).',
+ steps:['A passes to GK. GK receives with the sole, slightly to the side away from A, and passes to B with the other foot.','B passes to GK; GK plays to A. Keep going.','Every 2 minutes, change the rule: 2 touches → 1 touch → the passer chases the keeper after passing.'],
+ dose:'4 × 2 min, 1 min rest. About 8 min.',
+ points:['Open your hips toward where you will pass before the ball arrives.','Sole receive, a little to the side, away from pressure.','Inside-of-the-foot pass, ankle locked; use your left foot too.'],
+ mistakes:['Stopping the ball under your body while facing the passer.','Panicking under the press and kicking the ball out.'],
+ easier:'Always 2 touches, no chasing.',harder:'1 touch with the chaser on every pass.',
+ anim:{title:'Receive, open, pass (chaser version)',dur:2.6,
+  actors:{GK:{r:'gk',at:[2,10],f:-30,idle:'soft',k:[[.7,2,10,'soft',{f:-30}],[1,2.1,10.2,'soft',{f:10}],[1.3,2.2,10.4,'soft',{f:35}]]},
+   A:{r:'me',at:[10,5],f:148,idle:'soft',k:[[.6,10,5,'soft'],[2,4,8,'sprint'],[2.4,3.4,8.4,'brake']]},
+   B:{r:'mate',at:[10,15],f:212,idle:'soft'}},
+  ball:{at:[9.6,5.2],segs:[[0,.7,'pass','A',[2.3,9.6],'R'],[.7,1,'sole','GK',[2.2,10.5],'R'],[1.3,2.1,'pass','GK',[9.8,14.8],'L']]},
+  phases:[[0,.7,'Pass in','A passes from (10, 5) to GK'],[.7,2,'Chase','A sprints toward GK, to (4, 8)'],[.7,1,'Sole receive','GK takes it with the sole to (2.2, 10.5), away from A'],[1,1.3,'Open','GK turns hips toward B'],[1.3,2.1,'Pass out','GK passes to B at (10, 15)']]}},
+
+{id:'11.6',name:'Shield ladder',cat:C11,role:'both',min:2,players:'Pairs (A with B first; the keeper only once level 3 feels easy)',diff:2,
+ improves:'Keeping the ball when someone leans on you, built up in small steps so contact stops being scary.',space:'4 m × 4 m',equip:'4 cones, 1 ball',
+ setup:'Square with cones at (18, 8), (22, 8), (22, 12), (18, 12). A with the ball at (20, 10); B behind A.',
+ steps:["Level 1 (15 s): B only rests a hand on A's back. A keeps the ball moving with the sole, away from B.",'Level 2 (15 s): B leans with the shoulder at about half strength and tries to poke the ball.','Level 3 (20 s): live 1v1 inside the square; A keeps the ball.','Move up a level only when the one below feels easy.'],
+ dose:'3 reps at each level you reach, 40 s rest, swap roles. About 8 min.',
+ points:['Sideways, ball on the far foot, low and wide.','Forearm bent to feel B; never push or hold.','Move the ball away from the pressure with the sole.'],
+ mistakes:['Standing tall with straight legs.','Leaving the ball between you and the defender.'],
+ easier:'Stay at level 1 for the whole first week.',harder:'30 s at level 3, or escape out of the square when a teammate calls.',
+ anim:{title:'Level 3, ball moved away from pressure',dur:4.2,cones:[[18,8],[22,8],[22,12],[18,12]],zones:[[18,8,22,12]],
+  actors:{A:{r:'me',at:[20,10],f:117,idle:'shield',k:[[2,20,10,'shield'],[2.5,19.6,9.6,'shield',{f:100}],[4,19.6,9.6,'shield']]},
+   B:{r:'opp',at:[20.8,10.4],f:207,idle:'lean',k:[[2,20.8,10.4,'lean'],[2.5,20.6,9.6,'shuffle',{f:180}],[4,20.5,9.65,'lean']]}},
+  ball:{at:[19.55,9.78],segs:[[0,2,'stop','A',null,'L'],[2,2.5,'sole','A',[19.15,9.4],'L'],[2.5,4.2,'stop','A',null,'L']]},
+  phases:[[0,2,'Hold',"A sideways at (20, 10); B pressing on A's right side at (20.8, 10.4)"],[2,2.5,'B goes round','B steps round to the right'],[2,2.5,'Sole roll away','A rolls the ball to the left and turns the hips'],[2.5,4,'Re-shield','A keeps the body between B and the ball']]}}
+];
+
+/* =====================================================================
+   TODAY'S SESSION — 3 players, 75 minutes. min = block length in minutes.
+   ===================================================================== */
+const SESSION={title:"Today's session: 3 players, 75 minutes",
+ intro:"Built for you, your outfield friend and the keeper. Day 1 is for learning the drills: Nordics at 3 reps, and the first sprints at about 80%. The keeper is the passer in every build-up drill.",
+ bring:'At least 3 balls (6 is better), 16 cones, water. Build-up drills use the goal at x = 0, shooting drills the goal at x = 40. With only one goal, put it at x = 40 and mirror the build-up drills (x → 40 − x).',
+ blocks:[
+  {min:8,block:'Warm-up',drills:['1.1'],what:'FIFA 11+ Part 1, all 6 running exercises, 2 lengths each',who:'Two run as a pair, the third runs alongside; swap the pair every exercise'},
+  {min:5,block:'Warm-up',drills:['1.2','1.4'],what:'Front plank 2 × 20 s, side plank 1 × 20 s each side, squats 1 × 30 s, Nordics 1 × 3 reps',who:'One holds the ankles, rotate'},
+  {min:2,block:'Warm-up',drills:['1.3'],what:'Across the pitch, bounding, plant and cut, 1 set each',who:'All three'},
+  {min:5,block:'Speed',drills:['2.1'],what:'1 set × 5 starts over 10 m',who:'Three lanes, race each other'},
+  {min:5,block:'Ball mastery',drills:['3.1'],what:'6 moves × 30 s with 10 s change-overs',who:'All three, keeper included'},
+  {min:10,block:'Build-up patterns',drills:['11.4'],what:'Wall pass, then set and play forward; 2 touches, then 1 touch',who:'GK starts every rep; you and B swap every 5 reps'},
+  {min:2,block:'Break',drills:[],what:'Water; set the gates for the next drill (Get free and receive)',who:''},
+  {min:6,block:'Under pressure',drills:['11.1'],what:'Get free and receive, 2 rounds × 3 reps each',who:'GK passes; you and B swap marker role'},
+  {min:6,block:'Under pressure',drills:['11.2'],what:'Set and spin: round 1 B only follows, round 2 live',who:'GK passes and returns'},
+  {min:10,block:'1v1 to goal',drills:['4.2','7.2'],what:'1v1 down the left channel, then finish on the keeper: cut inside and shoot, or go outside',who:'5 reps each as attacker'},
+  {min:1,block:'Break',drills:[],what:'Water',who:''},
+  {min:9,block:'Game',drills:['11.3'],what:'Keeper and you against one presser: 3 × 2½ min, 30 s to swap',who:'You and B swap attacker and presser; GK stays'},
+  {min:3,block:'Cool-down',drills:['10.1'],what:'1 lap easy jog, 1 lap walk; each says one good thing and one thing to fix',who:'All three'},
+  {min:3,block:'Cool-down',drills:['10.2'],what:"World's greatest stretch, adductor rock-backs, calf stretch, 30 s each side",who:'All three'}],
+ cones:[['11+ lane','12','x = 8, 13, 18, 23, 28, 33 on y = 7 and y = 13'],['Speed lanes','Reuse 6','Start (5, 6), (5, 10), (5, 14); finish (15, 6), (15, 10), (15, 14)'],['One-touch patterns','Reuse 3','Defender cone (11, 8); target gate (20, 6) and (20, 9)'],['Get free gates','Reuse 4','(18, 4), (18, 7), (18, 13), (18, 16)'],['Set and spin finish line','Reuse 2','(22, 6), (22, 14)'],['Wing channel','Reuse 4','(20, 12), (20, 20), (35, 12), (35, 20)'],['Goals, if you have none','2–4','(0, 8.5), (0, 11.5) and/or (40, 8.5), (40, 11.5)']],
+ note:"Nobody needs to be the coach. Before each block, one of you reads the card's 3 coaching points aloud and watches for the 2 common mistakes. Swap the reader every block. If more friends join later: add 6.3 rondo and play 8.4 trust game instead of 11.3."};
+
+/* =====================================================================
+   4-WEEK PLAN — 9 sessions (10 November – 6 December 2026)
+   ===================================================================== */
+const PLAN={
+ intro:'Nine sessions: 2 a week in weeks 1, 2 and 4, and 3 in week 3. Each is about 75 minutes: warm-up 15 min (FIFA 11+), speed or power 5–8 min, shared technique 5–10 min, main block 25–30 min, game 10–15 min, cool-down 6 min. The main block alternates between a CM day (build-up, receiving, defending) and an LW day (1v1s, shooting, decisions). Do the strength routine (push-ups 3 × 8–12, split squats 3 × 8 each leg, single-leg Romanian deadlift 3 × 8 each leg, side plank 3 × 30 s each side, plus 1.4 and 1.5) on two non-training days each week.',
+ versions:'3-player versions — 1v1 to goal game: you attack your friend from (22, 10) toward the keeper’s goal at x = 40, swap roles after every attack. 1v1 shoot-or-keep: the same, but a goal scores 2 and a missed or blocked shot from outside 10 m scores −1. 2v1 keep-ball: two keep the ball in the 3.4 box while one presses; swap the presser every 45 s, keeper included.',
+ fields:[['warm','Warm-up and speed'],['tech','Technique (all 3)'],['main','Main block'],['gk','Keeper focus'],['game','Game and cool-down']],
+ weeks:[
+  {title:'Week 1: learn (10–15 Nov)',sessions:[
+   {n:1,date:'Tue 10 Nov',track:'CM',warm:'11+ Level 1 · 2.1 starts',tech:'3.1 sole work',main:"CM day: today's session (11.4, 11.1, 11.2, then 4.2 + 7.2)",gk:'Passer in every build-up drill',game:'11.3 · 10.1, 10.2'},
+   {n:2,date:'Sat 14 Nov',track:'LW',warm:'11+ Level 1 (Nordic 1 × 3–5) · 2.2 sprint to stop at 70% · baseline tests',tech:'3.2 futsal turns',main:'LW day: 4.1 move menu, stages 1–3, friend defends · 7.1 quick-fire toe-pokes, friend feeds',gk:"Shot-stopping in 7.1 · 11.5 keeper's feet, 2 touches (8 min)",game:'1v1 to goal game, 4 × 2 min · 10.1'}]},
+  {title:'Week 2: add pressure (16–22 Nov)',sessions:[
+   {n:3,date:'Tue 17 Nov',track:'CM',warm:'11+ (Level 2 where Level 1 is clean; Nordic 1 × 5) + 1.5 Copenhagen short lever 1 × 3 per side · 2.3 5-0-5 turns',tech:'3.3 slalom',main:'CM day: 11.1 harder version · 6.1 scan and receive (keeper passes, friend calls the gate) · 5.3 pounce on the cue',gk:'Passer in 11.1 and 6.1 · 11.5 one-touch',game:'11.3, 3 × 3 min · 10.1, 10.2'},
+   {n:4,date:'Sat 21 Nov',track:'LW',warm:'11+ · 2.4 mirror drill',tech:'11.6 shield ladder, levels 1–2',main:'LW day: 4.2 wing 1v1, then finish · 7.2 cut inside against a live defender · 7.3 near post (start with a pass to yourself into the channel)',gk:'Near-post saves; throw out fast to the attacker after each save',game:'1v1 shoot-or-keep, 4 × 2 min · 10.1'}]},
+  {title:'Week 3: highest load (23–29 Nov)',sessions:[
+   {n:5,date:'Tue 24 Nov',track:'CM',warm:'11+ Level 2 + 1.5 Copenhagen 2 × 5 per side · 2.5 plyometric circuit',tech:'2v1 keep-ball',main:'CM day: 11.2 fully live · 5.2 close down and show away (friend starts with the ball at (26, 15), no server) · 5.4 track the runner (keeper is the server)',gk:'Server in 5.4 · 11.5 with chaser',game:'11.3 harder (3 s on the ball), 3 × 3 min · 10.1'},
+   {n:6,date:'Thu 26 Nov',track:'LW',warm:'11+ · 9.1 repeated shuttles 2 × 6',tech:'11.4 one-touch only',main:'LW day: 4.3 continuous 1v1, two gates · 4.4 without the chaser: beat your friend and shoot within 6 s',gk:'Saves, then quick distribution',game:'1v1 bursts: 6 × 40 s, 80 s rest, scoring on the keeper · 10.1, 10.2'},
+   {n:7,date:'Sat 28 Nov',track:'CM/LW',warm:'11+ (short)',tech:'3.1 sole work',main:'Repeat your weaker day from weeks 1–2',gk:'Keeper picks: 11.5 or shot-stopping',game:'1v1 to goal game, 4 × 2 min. If sore from Thursday: 10.3 easy ball day instead'}]},
+  {title:'Week 4: sharpen and re-test (30 Nov – 6 Dec)',sessions:[
+   {n:8,date:'Tue 1 Dec',track:'LW',warm:'11+ Level 2 · 2.1 starts, race version',tech:'2v1 keep-ball, one touch for the pair',main:'LW day: 4.2 narrow channel, then finish · 7.2 harder version',gk:'Fast restarts after saves',game:'1v1 shoot-or-keep, 4 × 2 min · 10.1'},
+   {n:9,date:'Sat 5 Dec',track:'CM',warm:'11+ · re-test all baseline tests',tech:'11.6 shield ladder, level 3',main:'CM day: 11.1 and 11.2 live, keep score',gk:'11.5 re-test',game:'11.3, 3 × 3 min · 10.1, 10.2'}]}],
+ baseline:[['10 m sprint (s)','2.1 falling start, best of 2'],['5-0-5, left-foot turn (s)','2.3, timed from x = 15 out and back, best of 2'],['5-0-5, right-foot turn (s)','Same, right foot'],['Slalom (s)','3.3 run 1, best of 2'],['Toe-poke accuracy (hits out of 6)','7.1 round 1, keeper in goal; a hit = inside a 1 m target by either post'],['Wing 1v1 as attacker (wins out of 8)','4.2 against your friend'],['Get free and receive (gates out of 6)','11.1 against your friend'],['Keeper: clean receive and pass under the chaser (out of 10)','11.5 harder version'],['Trust checklist (out of 12)','Section 8, after your next 5v5 with more players']]};
+</script>
+<style>
+:root{--ink:#0a0f1a;--bg:#fff;--soft:#eef1f4;--line:#b4bec9;--grn:#08702a;--hot:#ffd60a;--red:#c8102e;--blu:#1147d6;--top:52px}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);-webkit-text-size-adjust:100%;overflow-x:hidden}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+h2,h3,p,ul,ol{margin:0}
+a{color:var(--blu);font-weight:800}
+#top{height:var(--top);display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--ink);color:#fff;position:sticky;top:0;z-index:40}
+#menuBtn{flex:none;width:44px;height:40px;border:2px solid #fff;border-radius:9px;background:none;color:#fff;font-size:20px;line-height:1}
+.brand{font-weight:900;letter-spacing:.04em;font-size:17px;white-space:nowrap}
+.brand b{color:var(--hot)}
+#tabs{margin-left:auto;display:flex;gap:6px}
+#tabs button{height:38px;padding:0 12px;border:2px solid #fff;border-radius:9px;background:none;color:#fff;font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:.03em}
+#tabs button.on{background:var(--hot);border-color:var(--hot);color:var(--ink)}
+#side{position:fixed;top:var(--top);bottom:0;left:0;width:min(340px,88vw);background:#fff;border-right:3px solid var(--ink);z-index:35;display:flex;flex-direction:column;transform:translateX(-102%);transition:transform .2s}
+body.open #side{transform:none}
+#scrim{position:fixed;inset:var(--top) 0 0 0;background:rgba(10,15,26,.55);z-index:34;display:none}
+body.open #scrim{display:block}
+.filters{flex:none;padding:10px;border-bottom:3px solid var(--ink);display:grid;gap:8px;background:var(--soft)}
+#q{width:100%;height:44px;border:2px solid var(--ink);border-radius:9px;padding:0 12px;background:#fff;font-size:16px}
+.seg{display:flex;gap:4px;align-items:center}
+.seg span{font-size:12px;font-weight:800;text-transform:uppercase;min-width:52px}
+.seg button{flex:1;min-height:38px;padding:0 4px;border:2px solid var(--ink);border-radius:8px;background:#fff;font-weight:800;font-size:13px}
+.seg button.on{background:var(--ink);color:var(--hot)}
+#list{overflow-y:auto;flex:1 1 0;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.cat{position:sticky;top:0;background:var(--grn);color:#fff;font-weight:900;font-size:13px;text-transform:uppercase;letter-spacing:.04em;padding:6px 12px;z-index:1}
+.it{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:9px 12px;border:0;border-bottom:1px solid var(--line);background:#fff;min-height:54px}
+.it.on{background:var(--hot)}
+.it .id{font-weight:900;min-width:40px;font-size:17px}
+.it .nm{font-weight:700;line-height:1.2;display:block}
+.it .mt{font-size:12px;font-weight:600;opacity:.8}
+.none{padding:20px 12px;font-weight:700}
+main{display:block}
+#view3d{position:relative;height:46vh;min-height:250px;background:#bfe3f7;overflow:hidden;touch-action:none}
+#c{display:block;width:100%;height:100%;touch-action:none}
+#dTitle{position:absolute;left:8px;top:8px;max-width:calc(100% - 16px);background:rgba(10,15,26,.88);color:#fff;font-weight:800;font-size:14px;padding:5px 9px;border-radius:8px;line-height:1.2;pointer-events:none}
+#dTitle b{color:var(--hot)}
+#stage{position:relative}
+#camBtns{flex:none;display:flex;gap:4px;padding:6px 8px;background:var(--ink)}
+#camBtns .ov{flex:1 1 0;min-width:0;padding:0 2px;border-color:#fff;background:none;color:#fff;font-size:12px;min-height:42px}
+#camBtns .ov.on{background:var(--hot);border-color:var(--hot);color:var(--ink)}
+#camBtns #zIn,#camBtns #zOut{flex:.7 1 0;font-size:20px;line-height:1}
+.ov{min-height:40px;min-width:62px;padding:0 8px;border:2px solid var(--ink);border-radius:8px;background:#fff;font-weight:800;font-size:13px}
+.ov.on{background:var(--ink);color:var(--hot)}
+#trailBtn{flex:1.3 1 0!important}
+#legend{position:absolute;left:8px;bottom:64px;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100% - 16px);pointer-events:none}
+#legend i{font-style:normal;font-size:11px;font-weight:800;background:rgba(255,255,255,.92);border:1.5px solid var(--ink);border-radius:20px;padding:1px 7px 1px 4px;display:flex;align-items:center;gap:4px}
+#legend u{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--ink);display:inline-block}
+#cap{position:absolute;left:0;right:0;bottom:0;min-height:56px;background:rgba(10,15,26,.9);color:#fff;padding:7px 12px;font-size:15px;line-height:1.3;pointer-events:none}
+#cap b{color:var(--hot);margin-right:6px}
+#cap small{opacity:.8;font-weight:700;margin-right:6px}
+#err{position:absolute;inset:auto 8px 70px 8px;background:var(--red);color:#fff;font-weight:700;padding:8px;border-radius:8px;display:none}
+#ctrl{padding:8px 10px;border-bottom:3px solid var(--ink);background:var(--soft)}
+#scrub{position:relative;height:34px}
+#seek{position:absolute;inset:0;width:100%;height:34px;margin:0;accent-color:var(--grn)}
+#ticks{position:absolute;left:8px;right:8px;top:0;height:8px;pointer-events:none}
+#ticks i{position:absolute;top:0;width:3px;height:8px;background:var(--ink);border-radius:2px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.b{min-height:46px;padding:0 12px;border:2px solid var(--ink);border-radius:10px;background:#fff;font-weight:800;font-size:15px}
+.b.on{background:var(--ink);color:var(--hot)}
+.b.go{background:var(--grn);border-color:var(--grn);color:#fff;min-width:96px;font-size:17px}
+#time{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums;font-size:14px}
+#panel{padding:14px 14px 60px}
+.dh{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}
+.dh .id{background:var(--ink);color:var(--hot);font-weight:900;font-size:20px;padding:4px 10px;border-radius:9px}
+.dh h2{font-size:22px;line-height:1.15;font-weight:900}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.chip{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;border:2px solid var(--ink);border-radius:20px;padding:2px 10px}
+.chip.r{background:var(--hot)}
+#panel h3{font-size:14px;text-transform:uppercase;letter-spacing:.05em;font-weight:900;margin:16px 0 6px;border-bottom:3px solid var(--ink);padding-bottom:3px}
+#panel ul,#panel ol{padding-left:22px;display:grid;gap:5px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-top:8px}
+.kv b{font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding-top:3px}
+.dose{background:var(--ink);color:#fff;padding:10px 12px;border-radius:10px;font-weight:600}
+ul.good li::marker{color:var(--grn);content:"✔  "}
+ul.bad li::marker{color:var(--red);content:"✖  "}
+.ez{display:grid;gap:8px;margin-top:6px}
+.ez div{border:2px solid var(--ink);border-radius:10px;padding:8px 10px}
+.ez b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.ez .e b{color:var(--grn)}.ez .h b{color:var(--red)}
+.ph{display:flex;gap:8px;width:100%;text-align:left;border:2px solid var(--line);border-radius:9px;background:#fff;padding:7px 9px;margin-bottom:5px;min-height:44px;align-items:baseline}
+.ph.on{border-color:var(--ink);background:var(--hot)}
+.ph small{font-weight:800;min-width:74px;font-variant-numeric:tabular-nums}
+.tc{background:var(--ink);color:#fff;border-radius:14px;padding:14px;text-align:center}
+.tc .bk{font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:13px;color:var(--hot)}
+#clock{font-size:64px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;margin:6px 0}
+.tc .wh{font-weight:700;font-size:16px}.tc .who{opacity:.85;font-size:14px;margin-top:2px}
+.tc .row{justify-content:center;margin-top:10px}
+.tc .b{border-color:#fff;background:none;color:#fff}
+.tc .b.go{background:var(--hot);border-color:var(--hot);color:var(--ink)}
+.tc .b.sm{min-height:38px;font-size:13px}
+#tot{height:8px;background:#39414f;border-radius:6px;margin-top:12px;overflow:hidden}#tot i{display:block;height:100%;background:var(--hot);width:0}
+.blk{display:grid;grid-template-columns:86px 1fr;gap:8px;width:100%;text-align:left;border:2px solid var(--line);border-radius:10px;background:#fff;padding:8px 10px;margin-top:6px;min-height:52px}
+.blk.on{border-color:var(--ink);background:var(--hot)}.blk.done{opacity:.55}
+.blk small{font-weight:800;font-variant-numeric:tabular-nums}.blk b{display:block}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:6px}td,th{border:1.5px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top}th{background:var(--soft)}
+details{margin-top:12px;border:2px solid var(--ink);border-radius:10px;padding:8px 10px}summary{font-weight:900;cursor:pointer;min-height:30px}
+.note{background:var(--soft);border-left:5px solid var(--grn);padding:8px 10px;border-radius:6px;margin-top:10px;font-size:15px}
+.ses{border:2px solid var(--ink);border-radius:12px;margin-top:10px;overflow:hidden}
+.ses header{display:flex;gap:8px;align-items:center;background:var(--ink);color:#fff;padding:7px 10px;font-weight:800}
+.ses header .tk{margin-left:auto;background:var(--hot);color:var(--ink);border-radius:20px;padding:1px 10px;font-size:13px}
+.ses header .tk.LW{background:#fff}
+.ses.full header{background:var(--grn)}
+.ck{display:flex;gap:10px;padding:9px 10px;border-top:1px solid var(--line);align-items:flex-start;cursor:pointer}
+.ck input{width:26px;height:26px;flex:none;accent-color:var(--grn);margin:0}
+.ck b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.ck.done span{opacity:.55;text-decoration:line-through}
+.bar{font-weight:800;margin:10px 0 0}
+td input{width:70px;height:36px;border:2px solid var(--ink);border-radius:7px;padding:0 6px}
+body[data-view=plan] #stage{display:none}
+[hidden]{display:none!important}
+@media(min-width:1100px){
+ body{overflow:hidden}
+ #menuBtn{display:none}
+ #app{display:grid;grid-template-columns:330px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:calc(100vh - var(--top));height:calc(100dvh - var(--top));overflow:hidden}
+ #side{position:static;transform:none;width:auto;transition:none;min-height:0;height:100%;overflow:hidden}
+ #scrim{display:none!important}
+ main{display:grid;grid-template-columns:minmax(0,1fr) 420px;grid-template-rows:minmax(0,1fr);min-height:0;height:100%;overflow:hidden}
+ #stage{display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden;border-right:3px solid var(--ink)}
+ #view3d{flex:1 1 0;height:auto;min-height:0}
+ #ctrl{flex:none}
+ #panel{overflow-y:auto;min-height:0;height:100%;overscroll-behavior:contain}
+ body[data-view=plan] main{grid-template-columns:1fr}
+ body[data-view=plan] #panel{max-width:900px;margin:0 auto;width:100%}
+}
+@media(max-width:520px){#top{gap:5px;padding:0 6px}#tabs{gap:4px}#menuBtn{width:40px}#dTitle{font-size:12px;padding:4px 7px}#dTitle span{display:none}#view3d{height:44vh}#cap{font-size:14px}.brand{font-size:13px;min-width:0;overflow:hidden}#tabs button{padding:0 7px;font-size:12px;letter-spacing:0}#clock{font-size:54px}.b{padding:0 9px;font-size:14px}}
+@media(max-height:520px) and (orientation:landscape){#view3d{height:62vh}}
+</style>
+</head>
+<body data-view="drill">
+<header id="top">
+ <button id="menuBtn" aria-label="Open drill list">☰</button>
+ <div class="brand">5v5 <b>TRAINING</b></div>
+ <nav id="tabs"><button data-view="drill" class="on">Drills</button><button data-view="session">Session</button><button data-view="plan">Plan</button></nav>
+</header>
+<div id="app">
+ <aside id="side">
+  <div class="filters">
+   <input id="q" type="search" placeholder="Search drills…" aria-label="Search drills">
+   <div class="seg" id="fRole"><span>Position</span><button data-v="all" class="on">All</button><button data-v="CM">CM</button><button data-v="LW">LW</button><button data-v="both">Both</button></div>
+   <div class="seg" id="fPl"><span>Players</span><button data-v="0" class="on">Any</button><button data-v="1">Solo</button><button data-v="2">≤2</button><button data-v="3">≤3</button><button data-v="4">4+</button></div>
+   <div class="seg" id="fDiff"><span>Level</span><button data-v="0" class="on">Any</button><button data-v="1">Easy</button><button data-v="2">Med</button><button data-v="3">Hard</button></div>
+  </div>
+  <div id="list"></div>
+ </aside>
+ <div id="scrim"></div>
+ <main>
+  <section id="stage">
+   <div id="view3d">
+    <canvas id="c"></canvas>
+    <div id="dTitle"></div>
+    <div id="legend"></div>
+    <div id="err"></div>
+    <div id="cap"></div>
+   </div>
+   <div id="camBtns">
+    <button class="ov" data-cam="top">Top</button><button class="ov" data-cam="side">Side</button>
+    <button class="ov" data-cam="behind">Behind</button><button class="ov" data-cam="free">Free</button>
+    <button class="ov" id="zOut" aria-label="Zoom out">−</button><button class="ov" id="zIn" aria-label="Zoom in">+</button>
+    <button class="ov on" id="trailBtn">Paths on</button>
+   </div>
+   <div id="ctrl">
+    <div id="scrub"><div id="ticks"></div><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Timeline"></div>
+    <div class="row">
+     <button class="b" id="prevPh" aria-label="Previous phase">◀ Phase</button>
+     <button class="b go" id="play">▶ Play</button>
+     <button class="b" id="nextPh" aria-label="Next phase">Phase ▶</button>
+     <button class="b on" id="loop">Loop</button>
+     <button class="b sp" data-s="0.25">¼×</button><button class="b sp" data-s="0.5">½×</button><button class="b sp on" data-s="1">1×</button>
+     <span id="time"></span>
+    </div>
+   </div>
+  </section>
+  <section id="panel">
+   <div id="vDrill"></div>
+   <div id="vSession" hidden></div>
+   <div id="vPlan" hidden></div>
+  </section>
+ </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =====================================================================
+   3D ENGINE — scene, mannequins, poses
+   ===================================================================== */
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const D2R=Math.PI/180,TAU=Math.PI*2;
+const lerp=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),frac=v=>v-Math.floor(v);
+const smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t)};
+const angDiff=(a,b)=>{let d=(b-a)%TAU;if(d>Math.PI)d-=TAU;if(d<-Math.PI)d+=TAU;return d};
+function kf(x,k){if(x<=k[0][0])return k[0][1];for(let i=1;i<k.length;i++)if(x<=k[i][0])return lerp(k[i-1][1],k[i][1],smooth((x-k[i-1][0])/(k[i][0]-k[i-1][0])));return k[k.length-1][1]}
+const ROLE={me:{c:0xffd60a,n:'You'},mate:{c:0x1565ff,n:'Teammate'},opp:{c:0xe3172a,n:'Opponent'},gk:{c:0x8e24aa,n:'Keeper'},neu:{c:0xf4f4f4,n:'Server / helper'}};
+const BALL_R=.13,HIP=.95,TH=.44,SH=.44,FT=.07;
+
+const canvas=$('#c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xbfe3f7);
+const camera=new THREE.PerspectiveCamera(40,1,.1,400);
+scene.add(new THREE.HemisphereLight(0xffffff,0x56705a,.95));
+const sun=new THREE.DirectionalLight(0xffffff,.5);sun.position.set(-12,30,18);scene.add(sun);
+const V=new THREE.Vector3(),V2=new THREE.Vector3();
+const mat=c=>new THREE.MeshLambertMaterial({color:c});
+
+/* ---- pitch (40 x 20 m, futsal markings) ---- */
+(function(){
+ const S=51.2,cv=document.createElement('canvas');cv.width=2048;cv.height=1024;const x=cv.getContext('2d');
+ for(let i=0;i<10;i++){x.fillStyle=i%2?'#2f9e4a':'#2a9143';x.fillRect(i*4*S,0,4*S,1024)}
+ x.strokeStyle='#fff';x.fillStyle='#fff';x.lineWidth=6;
+ x.strokeRect(3,3,2042,1018);
+ x.beginPath();x.moveTo(1024,0);x.lineTo(1024,1024);x.stroke();
+ x.beginPath();x.arc(1024,512,3*S,0,TAU);x.stroke();
+ x.beginPath();x.arc(1024,512,8,0,TAU);x.fill();
+ for(const sx of [0,1]){const gx=sx?2048:0,d=sx?-1:1,yA=8.5*S,yB=11.5*S,r=6*S;
+  x.beginPath();x.arc(gx,yA,r,sx?Math.PI:0,sx?Math.PI*1.5:-Math.PI/2,!sx);x.stroke();
+  x.beginPath();x.arc(gx,yB,r,sx?Math.PI/2:Math.PI/2,sx?Math.PI:0,!sx);x.stroke();
+  x.beginPath();x.moveTo(gx+d*r,yA);x.lineTo(gx+d*r,yB);x.stroke();
+  x.beginPath();x.arc(gx+d*6*S,512,7,0,TAU);x.fill();
+  x.beginPath();x.arc(gx+d*10*S,512,7,0,TAU);x.fill();}
+ const tex=new THREE.CanvasTexture(cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+ const p=new THREE.Mesh(new THREE.PlaneGeometry(40,20),new THREE.MeshLambertMaterial({map:tex}));p.rotation.x=-Math.PI/2;scene.add(p);
+ const g=new THREE.Mesh(new THREE.PlaneGeometry(64,40),mat(0x1f6b33));g.rotation.x=-Math.PI/2;g.position.y=-.02;scene.add(g);
+ const white=mat(0xffffff),net=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.28,side:THREE.DoubleSide,depthWrite:false});
+ for(const gx of [-20,20]){const d=gx<0?-1:1,G=new THREE.Group();
+  for(const z of [-1.5,1.5]){const post=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,2,10),white);post.position.set(0,1,z);G.add(post)}
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,3.12,10),white);bar.rotation.x=Math.PI/2;bar.position.set(0,2,0);G.add(bar);
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(3,2),net);back.rotation.y=Math.PI/2;back.position.set(d*1,1,0);G.add(back);
+  const top=new THREE.Mesh(new THREE.PlaneGeometry(1,3),net);top.rotation.x=-Math.PI/2;top.rotation.z=Math.PI/2;top.position.set(d*.5,2,0);G.add(top);
+  for(const z of [-1.5,1.5]){const sd=new THREE.Mesh(new THREE.PlaneGeometry(1,2),net);sd.position.set(d*.5,1,z);G.add(sd)}
+  G.position.x=gx;scene.add(G)}
+})();
+
+/* ---- ball ---- */
+const ballMesh=(function(){const cv=document.createElement('canvas');cv.width=128;cv.height=64;const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,128,64);x.fillStyle='#111';
+ for(const [a,b] of [[10,14],[42,40],[74,12],[106,42],[26,56],[90,60],[58,2],[120,8]]){x.beginPath();x.arc(a,b,8,0,TAU);x.fill()}
+ return new THREE.Mesh(new THREE.SphereGeometry(BALL_R,20,14),new THREE.MeshLambertMaterial({map:new THREE.CanvasTexture(cv)}))})();
+const blobMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.28,depthWrite:false});
+function blob(r){const m=new THREE.Mesh(new THREE.CircleGeometry(r,18),blobMat);m.rotation.x=-Math.PI/2;m.position.y=.012;return m}
+const ballShadow=blob(.16);scene.add(ballMesh,ballShadow);
+const dyn=new THREE.Group();scene.add(dyn);
+
+/* ---- mannequin: jointed hips, knees, ankles, shoulders, elbows, neck ---- */
+function limb(len,r,m){const g=new THREE.CylinderGeometry(r,r*.85,len,10);g.translate(0,-len/2,0);const o=new THREE.Mesh(g,m);o.add(new THREE.Mesh(new THREE.SphereGeometry(r*1.08,10,8),m));return o}
+function labelSprite(txt,col){const c=document.createElement('canvas');c.width=160;c.height=64;const x=c.getContext('2d');
+ x.font='900 40px system-ui,Arial,sans-serif';x.textAlign='center';x.textBaseline='middle';x.lineWidth=9;x.strokeStyle='#0a0f1a';x.strokeText(txt,80,34);x.fillStyle=col;x.fillText(txt,80,34);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true}));s.scale.set(1.5,.6,1);s.renderOrder=20;return s}
+function makeMan(role,label){
+ const col=ROLE[role].c,shirt=mat(col),skin=mat(0xe9b990),dark=mat(0x10151f);
+ const root=new THREE.Group(),body=new THREE.Group(),spine=new THREE.Group();root.add(body);body.add(spine);spine.rotation.order='ZYX';
+ const pelvis=new THREE.Mesh(new THREE.BoxGeometry(.2,.22,.3),dark);pelvis.position.y=.03;body.add(pelvis);
+ const torso=new THREE.Mesh(new THREE.BoxGeometry(.21,.42,.38),shirt);torso.position.y=.33;spine.add(torso);
+ const head=new THREE.Group();head.position.y=.56;spine.add(head);
+ const skull=new THREE.Mesh(new THREE.SphereGeometry(.115,14,12),skin);skull.position.y=.11;head.add(skull);
+ const visor=new THREE.Mesh(new THREE.BoxGeometry(.07,.05,.17),dark);visor.position.set(.09,.13,0);head.add(visor);
+ const M={root,body,spine,head,leg:{},arm:{}};
+ for(const s of ['l','r']){const z=s=='l'?-1:1;
+  const hip=new THREE.Group();hip.position.set(0,0,z*.1);body.add(hip);hip.add(limb(TH,.078,skin));
+  const knee=new THREE.Group();knee.position.y=-TH;hip.add(knee);knee.add(limb(SH,.062,shirt));
+  const ank=new THREE.Group();ank.position.y=-SH;knee.add(ank);
+  const foot=new THREE.Mesh(new THREE.BoxGeometry(.27,.07,.105),s=='r'?mat(0xffffff):dark);foot.position.set(.07,-.035,0);ank.add(foot);
+  const toe=new THREE.Object3D();toe.position.set(.2,-FT,0);ank.add(toe);const heel=new THREE.Object3D();heel.position.set(-.06,-FT,0);ank.add(heel);
+  M.leg[s]={hip,knee,ank,toe,heel};
+  const sh=new THREE.Group();sh.position.set(0,.5,z*.235);spine.add(sh);sh.add(limb(.29,.052,shirt));
+  const el=new THREE.Group();el.position.y=-.29;sh.add(el);el.add(limb(.27,.044,skin));
+  const hand=new THREE.Mesh(new THREE.SphereGeometry(.05,8,6),skin);hand.position.y=-.29;el.add(hand);
+  M.arm[s]={sh,el}}
+ root.add(blob(.33));
+ const lb=labelSprite(label,'#'+('00000'+col.toString(16)).slice(-6));lb.position.y=2.2;root.add(lb);M.label=lb;
+ return M}
+
+/* ---- pose library. Angles in radians. l/r = left/right.
+   h hip flex, k knee bend, ab hip abduction, a ankle extra; s shoulder flex, sa shoulder abduction, e elbow;
+   sp spine lean, tw twist, sr side bend; hy head yaw; pitch/roll whole body; free+absY for floor poses ---- */
+function mirror(p){const o={};for(const k in p){let n=k,v=p[k];
+ if(/^[lr](h|k|a|s|e)$/.test(k))n=(k[0]=='l'?'r':'l')+k.slice(1);
+ else if(/^[lr](ab|sa)$/.test(k)){n=(k[0]=='l'?'r':'l')+k.slice(1);v=-v}
+ else if(k=='sr'||k=='tw'||k=='hy'||k=='roll'||k=='pz')v=-v;o[n]=v}return o}
+const nordic=t=>({free:1,absY:.06+TH*Math.cos(t),px:TH*Math.sin(t),pitch:t,lk:1.57-t,rk:1.57-t,la:-1.3,ra:-1.3,ls:.5,rs:.5,le:1.9,re:1.9});
+const LUNGE={lh:1.62,lk:1.4,rh:-1.05,rk:.1,sp:.9,ls:.9,rs:.9,le:.1,re:.1};
+const POSE={
+ stand:{le:.2,re:.2,lsa:.1,rsa:-.1},
+ soft:{lh:.28,lk:.5,rh:.28,rk:.5,sp:.12,le:.5,re:.5,lsa:.15,rsa:-.15,lab:.07,rab:-.07},
+ ready:{lh:.55,lk:.9,rh:.55,rk:.9,lab:.25,rab:-.25,sp:.35,ls:.25,rs:.25,le:1,re:1,lsa:.3,rsa:-.3},
+ plantR:{rab:-.55,rh:.3,rk:.45,lh:.6,lk:1,lab:.1,sp:.3,sr:-.2,le:1,re:1,rsa:-.5,lsa:.2},
+ slR:{rh:.2,rk:.3,lh:.3,lk:1.1,sp:.1,le:.8,re:.8,lsa:.2,rsa:-.2},
+ slRd:{rh:.8,rk:1.3,lh:.2,lk:1.3,sp:.45,le:1,re:1,ls:.4,rs:-.3,lsa:.2,rsa:-.2},
+ fall:{pitch:.42,le:.3,re:.3},
+ shield:{lh:.6,lk:.95,rh:.6,rk:.95,lab:.32,rab:-.32,sp:.3,rsa:-.9,re:1.3,rs:.2,le:.9,lsa:.3},
+ lean:{lh:.45,lk:.6,rh:.2,rk:.4,sp:.4,ls:.9,le:.6,rs:.3,re:.8,lab:.15,rab:-.15},
+ holdLeg:{lh:.5,lk:.8,rh:.5,rk:.8,sp:.45,ls:.75,rs:.75,le:.5,re:.5,lab:.15,rab:-.15},
+ kneelHold:{free:1,absY:.5,lk:1.57,rk:1.57,la:-1.3,ra:-1.3,sp:1,ls:.85,rs:.85},
+ nordic0:nordic(0),nordic1:nordic(.5),nordic2:nordic(1.05),
+ nordicC:Object.assign(nordic(1.3),{ls:1.7,rs:1.7,le:1.3,re:1.3}),
+ copLow:{free:1,absY:.2,roll:-1.27,rab:-1.05,lab:-.3,lsa:1.27,le:1.57},
+ copHigh:{free:1,absY:.42,roll:-1.77,rab:.02,lab:0,lsa:1.77,le:1.57},
+ lunge:LUNGE,
+ lungeElbow:Object.assign({},LUNGE,{sp:1.2,ls:.5,le:1.7,rs:1.2}),
+ lungeSky:Object.assign({},LUNGE,{sp:1,tw:.9,lsa:1.9,ls:0,le:0,rs:1,hy:.8})};
+POSE.plantL=mirror(POSE.plantR);POSE.slL=mirror(POSE.slR);POSE.slLd=mirror(POSE.slRd);
+
+/* ---- cyclic gaits: A hip swing, b hip bias, kS stance knee, kW swing knee, kB base knee, st stride (m per cycle) ---- */
+const GAIT={
+ walk:{A:.42,b:.03,kS:.1,kW:.9,kB:.05,arm:.35,el:.3,sp:.04,st:1.5},
+ jog:{A:.55,b:.1,kS:.3,kW:1.25,kB:.15,arm:.55,el:1.3,sp:.1,st:2},
+ run:{A:.75,b:.18,kS:.35,kW:1.6,kB:.2,arm:.85,el:1.5,sp:.18,st:2.7},
+ sprint:{A:.95,b:.25,kS:.35,kW:1.9,kB:.2,arm:1.1,el:1.6,sp:.28,st:3.4},
+ drive:{A:.8,b:.5,kS:.3,kW:1.7,kB:.4,arm:1.1,el:1.6,sp:.3,st:1.7,pitch:.4},
+ brake:{A:.35,b:.35,kS:.3,kW:.7,kB:.75,arm:.4,el:1.2,sp:.2,st:1},
+ back:{A:.4,b:.25,kS:.2,kW:.8,kB:.5,arm:.4,el:1.2,sp:.2,st:1.3},
+ shuffle:{lat:1,st:1.3},jockey:{lat:1,st:.9}};
+function gaitPose(g,ph){const G=GAIT[g],p={},c=Math.cos(TAU*ph),s=Math.sin(TAU*ph);
+ if(G.lat){const w=.14+.16*(1+s);p.lab=w;p.rab=-w;p.lh=.55;p.rh=.55;p.lk=.85+.3*Math.max(0,c);p.rk=.85+.3*Math.max(0,-c);p.sp=.32;p.le=1;p.re=1;p.lsa=.35;p.rsa=-.35;p.ls=.2;p.rs=.2;return p}
+ for(const [S,o] of [['l',0],['r',.5]]){const q=frac(ph+o);p[S+'h']=G.b+G.A*Math.cos(TAU*q);p[S+'k']=G.kB+(q<.5?G.kS*Math.sin(TAU*q):G.kW*Math.sin(TAU*(q-.5)))}
+ p.ls=-G.arm*c;p.rs=G.arm*c;p.le=G.el;p.re=G.el;p.sp=G.sp;p.lsa=.1;p.rsa=-.1;if(G.pitch)p.pitch=G.pitch;return p}
+function mix(a,b,w){const o={};for(const k in a)o[k]=a[k]*(1-w);for(const k in b)o[k]=(o[k]||0)+b[k]*w;return o}
+
+/* ---- apply a pose, then drop the body so the lowest foot rests on the ground ---- */
+function applyPose(M,p){const g=k=>p[k]||0,free=clamp(g('free'),0,1),pitch=g('pitch');
+ M.body.rotation.set(g('roll'),0,-pitch);
+ M.body.position.set(g('px')+(1-free)*HIP*Math.sin(pitch),HIP,g('pz'));
+ M.spine.rotation.set(g('sr'),g('tw'),-g('sp'));
+ M.head.rotation.set(0,g('hy'),0);
+ for(const s of ['l','r']){const L=M.leg[s],h=g(s+'h'),k=g(s+'k');
+  L.hip.rotation.set(g(s+'ab'),0,h);L.knee.rotation.z=-k;
+  L.ank.rotation.z=lerp(k-h+pitch+g(s+'a'),g(s+'a'),free);
+  const A=M.arm[s];A.sh.rotation.set(g(s+'sa'),0,g(s+'s'));A.el.rotation.z=g(s+'e')}
+ M.root.updateMatrixWorld(true);
+ let minY=1e9;for(const s of ['l','r'])for(const n of ['toe','heel']){M.leg[s][n].getWorldPosition(V);if(V.y<minY)minY=V.y}
+ M.body.position.y=lerp(HIP-minY,g('absY'),free)+g('air');
+ M.root.updateMatrixWorld(true)}
+
+/* ---- two-bone leg IK: put the ankle of leg s on a world target with weight w ---- */
+function ikLeg(M,s,target,w,p){if(w<.002)return;const L=M.leg[s];
+ const v=M.body.worldToLocal(V.copy(target));v.z-=(s=='l'?-.1:.1);
+ let d=v.length();const mx=TH+SH-.012;if(d>mx){v.multiplyScalar(mx/d);d=mx}if(d<.25){v.multiplyScalar(.25/Math.max(d,1e-4));d=.25}
+ const ux=v.x/d,uy=v.y/d,uz=v.z/d;
+ const al=Math.atan2(-uz,-uy),fl=Math.atan2(ux,Math.hypot(uy,uz));
+ const kn=Math.PI-Math.acos(clamp((TH*TH+SH*SH-d*d)/(2*TH*SH),-1,1));
+ const be=Math.acos(clamp((TH*TH+d*d-SH*SH)/(2*TH*d),-1,1));
+ L.hip.rotation.x=lerp(L.hip.rotation.x,al,w);L.hip.rotation.z=lerp(L.hip.rotation.z,fl+be,w);
+ const k=lerp(-L.knee.rotation.z,kn,w);L.knee.rotation.z=-k;
+ L.ank.rotation.z=k-L.hip.rotation.z+(p.pitch||0)}
+/* =====================================================================
+   ANIMATION — bake each drill into 60 Hz tracks, then play them back
+   ===================================================================== */
+const SIM=60,CYC={walk:1,jog:1,run:1,sprint:1,drive:1,brake:1,back:1,shuffle:1,jockey:1},SLOW=/^(nordic|cop|lunge)/;
+let cur=null;
+function posAt(a,t,o){const K=a.K;let i=1;while(i<K.length&&K[i].t<t)i++;o.i=i;
+ if(i>=K.length){const l=K[K.length-1];o.x=l.x;o.y=l.y;return}
+ const p=K[i-1],q=K[i],T=q.t-p.t,u=T>0?clamp((t-p.t)/T,0,1):1,u2=u*u,u3=u2*u,a0=2*u3-3*u2+1,a1=u3-2*u2+u,b0=-2*u3+3*u2,b1=u3-u2;
+ o.x=a0*p.x+a1*T*p.mx+b0*q.x+b1*T*q.mx;o.y=a0*p.y+a1*T*p.my+b0*q.y+b1*T*q.my}
+function bakeDrill(d){
+ const an=d.anim,N=Math.ceil(an.dur*SIM)+3,dt=1/SIM,A={},ids=Object.keys(an.actors),o={};
+ for(const id of ids){const df=an.actors[id],K=[{t:0,x:df.at[0],y:df.at[1],g:df.idle||'stand',o:{}}];
+  (df.k||[]).forEach(k=>K.push({t:k[0],x:k[1],y:k[2],g:k[3]||'jog',o:k[4]||{}}));
+  K.forEach((k,i)=>{k.mx=k.my=0;if(!CYC[k.g]&&!POSE[k.g])throw new Error('Unknown gait/pose "'+k.g+'" for '+id);
+   if(i==0||i==K.length-1)return;const a=K[i-1],b=K[i+1];
+   const ax=k.x-a.x,ay=k.y-a.y,bx=b.x-k.x,by=b.y-k.y,l1=Math.hypot(ax,ay),l2=Math.hypot(bx,by);
+   if(l1<.03||l2<.03||ax*bx+ay*by<0)return;
+   let mx=(b.x-a.x)/(b.t-a.t),my=(b.y-a.y)/(b.t-a.t);const m=Math.hypot(mx,my),lim=2.5*Math.min(l1/(k.t-a.t),l2/(b.t-k.t));
+   if(m>lim){mx*=lim/m;my*=lim/m}k.mx=mx;k.my=my});
+  let h0=df.f;if(h0==null){const k1=K.find(k=>Math.hypot(k.x-K[0].x,k.y-K[0].y)>.05);h0=k1?Math.atan2(k1.y-K[0].y,k1.x-K[0].x)/D2R:0}
+  A[id]={id,df,K,x:new Float32Array(N),y:new Float32Array(N),h:new Float32Array(N),ph:new Float32Array(N),sp:new Float32Array(N),auto:[],hd:h0*D2R,phase:0,len:0}}
+ const B={x:new Float32Array(N),y:new Float32Array(N),z:new Float32Array(N)};
+ const segs=(an.ball?an.ball.segs:[]).map(s=>({t0:s[0],t1:s[1],k:s[2],by:s[3],to:s[4],foot:s[5]||'R',o:s[6]||{}}));
+ segs.forEach(s=>{if(s.by&&!A[s.by])throw new Error('Ball segment refers to unknown actor '+s.by)});
+ let bx=an.ball?an.ball.at[0]:0,by=an.ball?an.ball.at[1]:0,bz=0;
+ for(let n=0;n<N;n++){const t=n*dt;
+  for(const id of ids){const a=A[id];posAt(a,t,o);a.x[n]=o.x;a.y[n]=o.y;a.si=o.i}
+  for(const id of ids){const a=A[id],K=a.K,past=a.si>=K.length,k=K[Math.min(a.si,K.length-1)],g=past?null:k.g;
+   const vx=n?(a.x[n]-a.x[n-1])/dt:0,vy=n?(a.y[n]-a.y[n-1])/dt:0,sp=Math.hypot(vx,vy);a.sp[n]=sp;a.len+=sp*dt;
+   let des=null;const f=past?null:k.o.f;
+   if(f!=null){if(typeof f=='number')des=f*D2R;else{let tx,ty;if(f=='ball'){tx=bx;ty=by}else if(Array.isArray(f)){tx=f[0];ty=f[1]}else{tx=A[f].x[n];ty=A[f].y[n]}des=Math.atan2(ty-a.y[n],tx-a.x[n])}}
+   else if(g&&CYC[g]&&!GAIT[g].lat&&sp>.5)des=Math.atan2(vy,vx)+(g=='back'?Math.PI:0);
+   if(des!=null)a.hd+=angDiff(a.hd,des)*Math.min(1,dt*14);
+   a.h[n]=a.hd;
+   if(g&&CYC[g]){const G=GAIT[g],fw=vx*Math.cos(a.hd)+vy*Math.sin(a.hd);a.phase+=(G.lat||fw>=-.2*sp?1:-1)*sp*dt/G.st}
+   a.ph[n]=a.phase}
+  let s=null;for(const q of segs)if(t>=q.t0-1e-6&&t<=q.t1+1e-6)s=q;
+  if(s){if(!s.p0)s.p0=[bx,by];const u=clamp((t-s.t0)/Math.max(1e-3,s.t1-s.t0),0,1);bz=0;
+   if(s.k=='drib'){const a=A[s.by],hx=Math.cos(a.hd),hy=Math.sin(a.hd),sd=s.foot=='R'?1:-1,uu=frac(a.phase+(s.foot=='R'?.5:0)),sf=clamp(a.sp[n]/4,.3,1.2),ld=.42+.5*sf*4*uu*(1-uu);
+    const w=smooth((t-s.t0)/.22);bx=lerp(s.p0[0],a.x[n]+hx*ld+sd*hy*.09,w);by=lerp(s.p0[1],a.y[n]+hy*ld-sd*hx*.09,w)}
+   else if(s.k=='stop'){bx=s.p0[0];by=s.p0[1]}
+   else{const e=s.k=='sole'?smooth(u):1-Math.pow(1-u,s.k=='touch'?2.2:s.k=='shot'?1.25:1.7);
+    bx=lerp(s.p0[0],s.to[0],e);by=lerp(s.p0[1],s.to[1],e);
+    if(s.k=='shot'){bz=(s.o.h||.3)*smooth(u*2.2);if(s.o.c){const dx=s.to[0]-s.p0[0],dy=s.to[1]-s.p0[1],L=Math.hypot(dx,dy)||1,c=s.o.c*4*e*(1-e);bx+=-dy/L*c;by+=dx/L*c}}}}
+  B.x[n]=bx;B.y[n]=by;B.z[n]=bz}
+ for(const s of segs){if(!s.by||!s.p0)continue;const a=A[s.by];
+  if(s.k=='pass'||s.k=='shot'||s.k=='touch'){const dx=s.to[0]-s.p0[0],dy=s.to[1]-s.p0[1],L=Math.hypot(dx,dy)||1;
+   a.auto.push({t:s.t0,kind:'kick',foot:s.foot,st:s.o.st||(s.k=='shot'?'laces':s.k=='touch'?'tap':'pass'),p:s.p0,dx:dx/L,dy:dy/L})}
+  else if(s.k=='sole'||s.k=='stop')a.auto.push({t:s.t0,t1:s.t1,kind:'hold',foot:s.foot});
+  else if(s.k=='drib')a.auto.push({t:s.t0,t1:s.t1,kind:'drib',foot:s.foot})}
+ for(const id of ids)(A[id].df.acts||[]).forEach(c=>A[id].auto.push({t:c[0],kind:c[1],arg:c[2],dur:c[3]||.4}));
+ return {d,an,A,list:ids.map(i=>A[i]),B,N,hasBall:!!an.ball,dur:an.dur}}
+function samp(arr,t){const f=clamp(t*SIM,0,arr.length-1.001),i=f|0;return lerp(arr[i],arr[i+1],f-i)}
+
+function basePose(g,ph,sp){if(!CYC[g])return POSE[g]||POSE.stand;
+ const G=GAIT[g],idle=G.lat||g=='brake'||g=='back'?POSE.ready:POSE.soft;return mix(idle,gaitPose(g,ph),smooth(sp/1.3))}
+function poseAt(a,t){const K=a.K;let i=1;while(i<K.length&&K[i].t<t)i++;
+ const ph=samp(a.ph,t),sp=samp(a.sp,t),last=K[K.length-1];let g,t0,len,pg;
+ if(i>=K.length){g=CYC[last.g]?(a.df.idle||'soft'):last.g;t0=last.t;len=.3;pg=last.g}
+ else{g=K[i].g;t0=K[i-1].t;len=K[i].t-t0;pg=K[i-1].g}
+ const c=basePose(g,ph,sp),bd=SLOW.test(g)||SLOW.test(pg)?len:Math.min(len,.25),w=smooth((t-t0)/Math.max(.01,bd));
+ return w>=1?Object.assign({},c):mix(basePose(pg,ph,sp),c,w)}
+
+/* kick shapes: [hip, knee] at wind-up, contact and follow-through */
+const KICK={pass:{w:[-.5,1],h:[.4,.15],f:[.75,.1]},laces:{w:[-.85,1.6],h:[.35,.25],f:[1.2,.15],sp:.2},poke:{w:[-.1,1.15],h:[.4,.1],f:[.55,.05]},curl:{w:[-.65,1.2],h:[.45,.2],f:[.95,.3],sp:.1},tap:{w:[.1,.5],h:[.35,.25],f:[.3,.2]}};
+function overlay(a,p,t,iks){const L=(k,v,w)=>{p[k]=lerp(p[k]||0,v,w)},ad=(k,v)=>{p[k]=(p[k]||0)+v};
+ for(const c of a.auto){const tau=t-c.t;
+  if(c.kind=='kick'){if(tau<-.36||tau>.5)continue;const S=c.foot=='L'?'l':'r',O=S=='l'?'r':'l';
+   if(c.st=='hand'){const W=kf(tau,[[-.35,0],[-.15,1],[.15,1],[.45,0]]);L('sp',.8,W);L('rs',kf(tau,[[-.2,-.6],[.1,1.1]]),W);L('re',.1,W);L('lk',.9,W);L('rk',.9,W);L('lh',.7,W);L('rh',.7,W);continue}
+   const k=KICK[c.st]||KICK.pass,tap=c.st=='tap',W=kf(tau,tap?[[-.16,0],[-.05,1],[.06,1],[.2,0]]:[[-.32,0],[-.15,1],[.16,1],[.45,0]]);
+   L(S+'h',kf(tau,[[-.15,k.w[0]],[0,k.h[0]],[.16,k.f[0]]]),W);L(S+'k',kf(tau,[[-.15,k.w[1]],[0,k.h[1]],[.16,k.f[1]]]),W);
+   if(!tap){L(O+'k',.35,W*.7);L(O+'h',.15,W*.7);L(O+'s',.7,W);L(S+'s',-.5,W)}if(k.sp)ad('sp',k.sp*W);
+   const wi=Math.exp(-(tau*tau)/(.055*.055));if(wi>.02)iks.push({s:S,w:wi,x:c.p[0]-c.dx*.17,y:c.p[1]-c.dy*.17,z:.11})}
+  else if(c.kind=='hold'){const W=kf(t,[[c.t-.12,0],[c.t,1],[c.t1,1],[c.t1+.12,0]]);if(W>.01){const S=c.foot=='L'?'l':'r';iks.push({s:S,w:W,ball:1,sole:1});L((S=='l'?'r':'l')+'k',.45,W*.6)}}
+  else if(c.kind=='drib'){if(t<c.t||t>c.t1)continue;const u=frac(samp(a.ph,t)+(c.foot=='R'?.5:0)),du=Math.min(u,1-u),W=Math.exp(-(du*du)/(.09*.09))*smooth(samp(a.sp,t));if(W>.03)iks.push({s:c.foot=='L'?'l':'r',w:W,ball:1})}
+  else{const d=c.dur,u=tau/d,g=c.arg;if(tau<-.5||tau>d+1.3)continue;
+   if(c.kind=='scan'){const W=kf(u,[[-.1,0],[.35,1],[.7,1],[1.1,0]])*(g=='L'?1:-1);ad('hy',1.25*W);ad('tw',.3*W)}
+   else if(c.kind=='feint'){const W=kf(u,[[-.3,0],[.3,1],[.7,1],[1.3,0]]),s=g=='R'?1:-1,S=g=='R'?'r':'l';ad('sr',.4*s*W);ad('tw',-.3*s*W);ad('roll',.12*s*W);ad(S+'ab',-.3*s*W);L(S+'k',.6,W*.6)}
+   else if(c.kind=='stepover'){const W=kf(u,[[-.25,0],[.1,1],[.85,1],[1.3,0]]),S=g=='L'?'l':'r',s=S=='r'?1:-1;L(S+'h',.75,W);L(S+'k',.55,W);L(S+'ab',s*lerp(-.45,.4,smooth(u)),W);ad('sr',-.25*s*W);ad('tw',.3*s*W)}
+   else if(c.kind=='point'){const W=kf(u,[[-.2,0],[.15,1],[.85,1],[1.1,0]]),S=g=='L'?'l':'r';L(S+'sa',(S=='l'?1:-1)*1.45,W);L(S+'e',0,W);L(S+'s',.2,W)}
+   else if(c.kind=='tackle'){const W=kf(tau,[[-.25,0],[-.05,1],[.15,1],[.4,0]]),S=g=='L'?'l':'r',O=S=='l'?'r':'l';L(S+'h',.85,W);L(S+'k',.15,W);L(O+'k',.8,W);L(O+'h',.1,W);L('sp',.3,W)}
+   else if(c.kind=='dive'){const W=kf(tau,[[-.05,0],[d*.7,1],[d+.5,1],[d+1.1,0]]),s=g=='R'?1:-1;ad('roll',1.15*s*W);L('lsa',2.5,W);L('rsa',-2.5,W);L('le',.1,W);L('re',.1,W);ad('air',.2*Math.sin(Math.PI*clamp(u,0,1)))}
+   else if(c.kind=='hop'){if(u>=0&&u<=1)ad('air',g*4*u*(1-u))}}}}
+
+let lastBall=null;
+function evaluate(t){if(!cur)return;const bx=samp(cur.B.x,t),by=samp(cur.B.y,t),bz=samp(cur.B.z,t);
+ for(const a of cur.list){const x=samp(a.x,t),y=samp(a.y,t),h=samp(a.h,t),M=a.M;
+  M.root.position.set(x-20,0,10-y);M.root.rotation.y=h;
+  const p=poseAt(a,t),iks=[];overlay(a,p,t,iks);applyPose(M,p);
+  for(const k of iks){if(k.ball){const hx=Math.cos(h),hy=Math.sin(h);if(k.sole)V2.set(bx-hx*.05-20,bz+2*BALL_R+FT,10-(by-hy*.05));else V2.set(bx-hx*.18-20,.11,10-(by-hy*.18))}else V2.set(k.x-20,k.z,10-k.y);ikLeg(M,k.s,V2,k.w,p)}}
+ ballMesh.visible=ballShadow.visible=cur.hasBall;
+ if(cur.hasBall){const wx=bx-20,wz=10-by;
+  if(lastBall){const dx=wx-lastBall[0],dz=wz-lastBall[1],dl=Math.hypot(dx,dz);if(dl>1e-4&&dl<2)ballMesh.rotateOnWorldAxis(V.set(dz/dl,0,-dx/dl),dl/BALL_R)}
+  lastBall=[wx,wz];ballMesh.position.set(wx,BALL_R+bz,wz);ballShadow.position.set(wx,.013,wz)}}
+
+/* ---- per-drill scene objects: players, cones, zones, path trails ---- */
+function ribbon(pts,w,col,op,y,dash){const pos=[],idx=[];let acc=0,prev=false;
+ for(let i=0;i<pts.length;i++){const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)];let dx=b[0]-a[0],dy=b[1]-a[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;
+  if(i)acc+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);const on=!dash||(acc%dash)<dash*.55,px=-dy*w/2,py=dx*w/2;
+  pos.push(pts[i][0]+px-20,y,10-(pts[i][1]+py),pts[i][0]-px-20,y,10-(pts[i][1]-py));
+  if(i&&on&&prev){const k=i*2;idx.push(k-2,k-1,k,k-1,k+1,k)}prev=on}
+ const n=pts.length;if(n>1&&!dash){const e=pts[n-1];let q=n-2;while(q>0&&Math.hypot(e[0]-pts[q][0],e[1]-pts[q][1])<.4)q--;
+  let dx=e[0]-pts[q][0],dy=e[1]-pts[q][1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;const k=pos.length/3;
+  pos.push(e[0]+dx*.55-20,y,10-(e[1]+dy*.55),e[0]-dy*.3-20,y,10-(e[1]+dx*.3),e[0]+dy*.3-20,y,10-(e[1]-dx*.3));idx.push(k,k+1,k+2)}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
+ return new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,side:THREE.DoubleSide,depthWrite:false}))}
+function track(xs,ys,N){const pts=[];for(let n=0;n<N;n+=3){const p=[xs[n],ys[n]],l=pts[pts.length-1];if(!l||Math.hypot(p[0]-l[0],p[1]-l[1])>.06)pts.push(p)}return pts}
+const trails=new THREE.Group();let showTrails=true;
+function clearDyn(){dyn.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material!==blobMat){if(o.material.map)o.material.map.dispose();o.material.dispose()}});while(dyn.children.length)dyn.remove(dyn.children[0]);while(trails.children.length)trails.remove(trails.children[0])}
+function loadDrill(d){clearDyn();cur=null;lastBall=null;const c=bakeDrill(d),an=c.an;
+ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;const ext=(x,y)=>{if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y};
+ for(const a of c.list){a.M=makeMan(a.df.r,a.id);dyn.add(a.M.root);for(let n=0;n<c.N;n+=6)ext(a.x[n],a.y[n]);
+  if(a.len>.6){const m=ribbon(track(a.x,a.y,c.N),.13,ROLE[a.df.r].c,.8,.022);trails.add(m)}}
+ if(c.hasBall){for(let n=0;n<c.N;n+=6)ext(c.B.x[n],c.B.y[n]);const m=ribbon(track(c.B.x,c.B.y,c.N),.07,0xffffff,.95,.03,.5);trails.add(m)}
+ const coneG=new THREE.ConeGeometry(.17,.34,14),coneM=mat(0xff5a00);
+ (an.cones||[]).forEach(p=>{const m=new THREE.Mesh(coneG,coneM);m.position.set(p[0]-20,.17,10-p[1]);dyn.add(m);ext(p[0],p[1])});
+ (an.zones||[]).forEach(z=>{const w=z[2]-z[0],h=z[3]-z[1],m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.14,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.set(z[0]+w/2-20,.008,10-(z[1]+h/2));dyn.add(m);
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(w,h)),new THREE.LineBasicMaterial({color:0xffffff}));e.rotation.x=-Math.PI/2;e.position.copy(m.position);e.position.y=.015;dyn.add(e)});
+ dyn.add(trails);trails.visible=showTrails;
+ c.box={cx:(x0+x1)/2,cy:(y0+y1)/2,w:Math.max(8,x1-x0+3.5),h:Math.max(6,y1-y0+3.5)};
+ c.me=c.list.find(a=>a.df.r=='me')||c.list[0];cur=c;return c}
+
+/* ---- camera: presets + touch/mouse orbit, pinch zoom, two-finger pan ---- */
+const cam={th:0,ph:1,r:30,tx:0,tz:0,mode:'side',follow:false};
+function fitR(){const b=cur.box,tv=Math.tan(camera.fov*D2R/2);return Math.max(b.h/2/tv,b.w/2/(tv*camera.aspect))*1.08}
+function setCam(mode){if(!cur)return;const b=cur.box;if(mode!='free'){cam.tx=b.cx-20;cam.tz=10-b.cy;cam.follow=false}
+ if(mode=='top'){cam.th=0;cam.ph=.03;cam.r=fitR()}
+ else if(mode=='side'){cam.th=0;cam.ph=1.02;cam.r=fitR()*.92}
+ else if(mode=='behind'){const a=cur.me;let fx=0,fy=0,best=0;for(let n=0;n<cur.N;n+=10){const dx=a.x[n]-a.x[0],dy=a.y[n]-a.y[0],dd=dx*dx+dy*dy;if(dd>best){best=dd;fx=dx;fy=dy}}
+  if(best<6){fx=Math.cos(a.h[0]);fy=Math.sin(a.h[0])}cam.th=Math.atan2(-fx,fy);cam.ph=1.2;cam.r=9;cam.follow=true}
+ cam.mode=mode;$$('[data-cam]').forEach(b=>b.classList.toggle('on',b.dataset.cam==mode))}
+function updateCam(t){if(cam.follow&&cur){const a=cur.me,x=samp(a.x,t)-20,z=10-samp(a.y,t);cam.tx=lerp(cam.tx,x,.12);cam.tz=lerp(cam.tz,z,.12)}
+ const sp=Math.sin(cam.ph),cp=Math.cos(cam.ph);camera.position.set(cam.tx+cam.r*sp*Math.sin(cam.th),.9+cam.r*cp,cam.tz+cam.r*sp*Math.cos(cam.th));camera.lookAt(cam.tx,.9,cam.tz)}
+(function(){const el=$('#view3d'),pts=new Map();let pd=0,pmx=0,pmy=0;
+ const free=()=>{if(cam.mode!='free'){cam.mode='free';cam.follow=false;$$('[data-cam]').forEach(b=>b.classList.toggle('on',b.dataset.cam=='free'))}};
+ const pan=(dx,dy)=>{const k=cam.r*.0016;cam.tx+=(-dx*Math.cos(cam.th)-dy*Math.sin(cam.th))*k;cam.tz+=(dx*Math.sin(cam.th)-dy*Math.cos(cam.th))*k};
+ canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY,b:e.button,sh:e.shiftKey});
+  if(pts.size==2){const [a,b]=[...pts.values()];pd=Math.hypot(a.x-b.x,a.y-b.y);pmx=(a.x+b.x)/2;pmy=(a.y+b.y)/2}});
+ canvas.addEventListener('pointermove',e=>{const p=pts.get(e.pointerId);if(!p)return;const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+  if(pts.size==1){free();if(p.b==2||p.sh)pan(dx,dy);else{cam.th-=dx*.005;cam.ph=clamp(cam.ph-dy*.005,.03,1.45)}}
+  else if(pts.size==2){free();const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+   if(pd>0)cam.r=clamp(cam.r*pd/d,2.5,90);pan(mx-pmx,my-pmy);pd=d;pmx=mx;pmy=my}});
+ const up=e=>{pts.delete(e.pointerId);pd=0};canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+ canvas.addEventListener('wheel',e=>{if(window.innerWidth<1100&&!e.ctrlKey)return;e.preventDefault();free();cam.r=clamp(cam.r*Math.exp(e.deltaY*.0012),2.5,90)},{passive:false});
+ canvas.addEventListener('contextmenu',e=>e.preventDefault());
+ const rs=()=>{const w=el.clientWidth,h=el.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()};
+ if(window.ResizeObserver)new ResizeObserver(rs).observe(el);window.addEventListener('resize',rs);rs()})();
+/* =====================================================================
+   UI — library, playback controls, info panel, session timer, 4-week plan
+   ===================================================================== */
+const KEY='fl5v5.v1';
+let S={};try{S=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){S={}}
+S.plan=S.plan||{};S.base=S.base||{};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const BYID={};DRILLS.forEach(d=>BYID[d.id]=d);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const link=s=>esc(s).replace(/(^|[^\d.])(\d{1,2}\.\d)(?![\d])/g,(m,a,id)=>BYID[id]?a+'<a href="#" data-drill="'+id+'">'+id+'</a>':m);
+const DIFF=['','Easy','Medium','Hard'],fmt=s=>{s=Math.max(0,Math.ceil(s));return String(s/60|0).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+
+/* ---- playback ---- */
+const P={t:0,playing:false,speed:1,loop:true,stopAt:null,ph:-2,drill:null};
+function setPlaying(v){P.playing=v;$('#play').textContent=v?'❚❚ Pause':'▶ Play'}
+function phases(){return cur?cur.an.phases:[]}
+function stepPhase(dir){const ph=phases();if(!ph.length)return;let i=ph.findIndex(p=>P.t<p[0]-1e-3);if(i<0)i=ph.length;let curI=i-1;
+ if(P.stopAt==null&&P.t<=ph[0][0]+1e-3&&dir>0&&!P.started)curI=-1;
+ let n=clamp(curI+dir,0,ph.length-1);if(dir>0&&curI>=ph.length-1)n=0;P.started=true;P.t=ph[n][0];P.stopAt=ph[n][1];setPlaying(true)}
+function tick(now){requestAnimationFrame(tick);const dt=Math.min(.05,(now-(tick.l||now))/1000);tick.l=now;if(!cur)return;
+ if(P.playing){P.t+=dt*P.speed;
+  if(P.stopAt!=null&&P.t>=P.stopAt){P.t=P.stopAt;P.stopAt=null;setPlaying(false)}
+  else if(P.t>=cur.dur){if(P.loop)P.t=0;else{P.t=cur.dur;setPlaying(false)}}}
+ try{evaluate(P.t)}catch(e){showErr(e)}
+ updateCam(P.t);renderer.render(scene,camera);
+ const ph=phases();let act=[];ph.forEach((p,i)=>{if(P.t>=p[0]-1e-3&&P.t<p[1])act.push(i)});if(!act.length&&ph.length){let i=ph.length-1;while(i>0&&ph[i][0]>P.t)i--;act=[i]}
+ const key=act.join(',');if(key!=P.ph){P.ph=key;$('#cap').innerHTML=act.slice(-2).map(i=>'<div><small>'+(i+1)+'/'+ph.length+'</small><b>'+esc(ph[i][2])+'</b>'+esc(ph[i][3])+'</div>').join('');
+  $$('.ph').forEach((b,i)=>b.classList.toggle('on',act.includes(i)))}
+ if(!tick.drag)$('#seek').value=Math.round(P.t/cur.dur*1000);
+ $('#time').textContent=P.t.toFixed(1)+' / '+cur.dur.toFixed(1)+' s'}
+function showErr(e){const el=$('#err');el.style.display='block';el.textContent='Animation error: '+(e&&e.message||e);console.error(e)}
+
+/* ---- drill selection + info panel ---- */
+function selectDrill(id,opts){const d=BYID[id];if(!d)return;opts=opts||{};P.drill=d;S.last=id;save();
+ $('#err').style.display='none';
+ try{loadDrill(d);setCam(cam.mode=='free'?'side':cam.mode)}catch(e){showErr(e)}
+ P.t=0;P.stopAt=null;P.ph=-2;P.started=false;setPlaying(opts.play!==false);
+ $('#dTitle').innerHTML='<b>'+d.id+'</b> '+esc(d.name)+'<br><span style="font-weight:600;font-size:12px">'+esc(d.anim.title)+'</span>';
+ const roles=[...new Set(Object.values(d.anim.actors).map(a=>a.r))];
+ $('#legend').innerHTML=roles.map(r=>'<i><u style="background:#'+('00000'+ROLE[r].c.toString(16)).slice(-6)+'"></u>'+ROLE[r].n+'</i>').join('')+'<i><u style="background:#fff"></u>White boot = right foot</i>';
+ $('#ticks').innerHTML=d.anim.phases.map(p=>'<i style="left:'+(p[0]/d.anim.dur*100)+'%"></i>').join('');
+ renderInfo(d);$$('.it').forEach(b=>b.classList.toggle('on',b.dataset.id==id));
+ if(!opts.keepView)setView('drill');document.body.classList.remove('open')}
+function renderInfo(d){const li=a=>a.map(x=>'<li>'+link(x)+'</li>').join('');
+ $('#vDrill').innerHTML='<div class="dh"><span class="id">'+d.id+'</span><h2>'+esc(d.name)+'</h2></div>'+
+ '<div class="chips"><span class="chip">'+esc(d.cat)+'</span><span class="chip r">'+(d.role=='both'?'CM + LW':d.role)+'</span><span class="chip">'+esc(d.players)+'</span><span class="chip">'+DIFF[d.diff]+'</span></div>'+
+ '<h3>Purpose</h3><p>'+link(d.improves)+'</p>'+
+ '<div class="kv"><b>Space</b><span>'+esc(d.space)+'</span><b>Equipment</b><span>'+esc(d.equip)+'</span></div>'+
+ '<h3>Setup</h3><p>'+link(d.setup)+'</p>'+
+ '<h3>How it runs</h3><ol>'+li(d.steps)+'</ol>'+
+ '<h3>Sets · reps · rest</h3><p class="dose">'+link(d.dose)+'</p>'+
+ '<h3>Coaching points</h3><ul class="good">'+li(d.points)+'</ul>'+
+ '<h3>Common mistakes</h3><ul class="bad">'+li(d.mistakes)+'</ul>'+
+ '<h3>Easier / harder</h3><div class="ez"><div class="e"><b>Easier</b>'+link(d.easier)+'</div><div class="h"><b>Harder</b>'+link(d.harder)+'</div></div>'+
+ '<h3>Animation: '+esc(d.anim.title)+'</h3>'+d.anim.phases.map((p,i)=>'<button class="ph" data-ph="'+i+'"><small>'+p[0].toFixed(1)+'–'+p[1].toFixed(1)+' s</small><span><b>'+esc(p[2])+'.</b> '+esc(p[3])+'</span></button>').join('')}
+
+/* ---- sidebar list, search, filters ---- */
+const F={q:'',role:'all',pl:0,diff:0};
+function renderList(){const q=F.q.trim().toLowerCase();let html='',lastCat='',n=0;
+ for(const d of DRILLS){
+  if(F.role!='all'&&!(F.role=='both'?d.role=='both':(d.role==F.role||d.role=='both')))continue;
+  if(F.pl&&!(F.pl==4?d.min>=4:d.min<=F.pl))continue;
+  if(F.diff&&d.diff!=F.diff)continue;
+  if(q&&!(d.id+' '+d.name+' '+d.cat+' '+d.improves).toLowerCase().includes(q))continue;
+  if(d.cat!=lastCat){html+='<div class="cat">'+esc(d.cat)+'</div>';lastCat=d.cat}n++;
+  html+='<button class="it'+(P.drill&&P.drill.id==d.id?' on':'')+'" data-id="'+d.id+'"><span class="id">'+d.id+'</span><span><span class="nm">'+esc(d.name)+'</span><span class="mt">'+(d.role=='both'?'CM + LW':d.role)+' · '+(d.min==1?'solo':d.min+'+ players')+' · '+DIFF[d.diff]+'</span></span></button>'}
+ $('#list').innerHTML=html||'<div class="none">No drills match. Clear a filter.</div>'}
+function segBind(sel,key,num){$$(sel+' button').forEach(b=>b.onclick=()=>{F[key]=num?+b.dataset.v:b.dataset.v;$$(sel+' button').forEach(x=>x.classList.toggle('on',x==b));renderList()})}
+segBind('#fRole','role');segBind('#fPl','pl',1);segBind('#fDiff','diff',1);
+$('#q').oninput=e=>{F.q=e.target.value;renderList()};
+$('#list').onclick=e=>{const b=e.target.closest('.it');if(b)selectDrill(b.dataset.id)};
+
+/* ---- views ---- */
+function setView(v){document.body.dataset.view=v;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.view==v));
+ $('#vDrill').hidden=v!='drill';$('#vSession').hidden=v!='session';$('#vPlan').hidden=v!='plan';window.dispatchEvent(new Event('resize'))}
+$$('#tabs button').forEach(b=>b.onclick=()=>{setView(b.dataset.view);if(b.dataset.view=='session')loadBlock(T.i,false)});
+$('#menuBtn').onclick=()=>document.body.classList.toggle('open');$('#scrim').onclick=()=>document.body.classList.remove('open');
+document.addEventListener('click',e=>{const a=e.target.closest('[data-drill]');if(a){e.preventDefault();selectDrill(a.dataset.drill,{keepView:a.dataset.keep=='1'});window.scrollTo(0,0)}
+ const p=e.target.closest('.ph');if(p){const ph=phases()[+p.dataset.ph];P.t=ph[0];P.stopAt=ph[1];P.started=true;setPlaying(true);if(window.innerWidth<1100)window.scrollTo(0,0)}});
+
+/* ---- control bar ---- */
+$('#play').onclick=()=>{P.stopAt=null;if(!P.playing&&cur&&P.t>=cur.dur-1e-3)P.t=0;setPlaying(!P.playing)};
+$('#loop').onclick=e=>{P.loop=!P.loop;e.currentTarget.classList.toggle('on',P.loop)};
+$$('.sp').forEach(b=>b.onclick=()=>{P.speed=+b.dataset.s;$$('.sp').forEach(x=>x.classList.toggle('on',x==b))});
+$('#prevPh').onclick=()=>stepPhase(-1);$('#nextPh').onclick=()=>stepPhase(1);
+const seek=$('#seek');seek.oninput=()=>{tick.drag=true;P.stopAt=null;setPlaying(false);if(cur)P.t=seek.value/1000*cur.dur};seek.onchange=()=>{tick.drag=false};
+$$('[data-cam]').forEach(b=>b.onclick=()=>setCam(b.dataset.cam));
+$('#zIn').onclick=()=>{cam.r=clamp(cam.r*.8,2.5,90)};$('#zOut').onclick=()=>{cam.r=clamp(cam.r*1.25,2.5,90)};
+$('#trailBtn').onclick=e=>{showTrails=!showTrails;trails.visible=showTrails;e.currentTarget.classList.toggle('on',showTrails);e.currentTarget.textContent=showTrails?'Paths on':'Paths off'};
+document.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return;if(e.code=='Space'){e.preventDefault();$('#play').click()}else if(e.code=='ArrowRight')stepPhase(1);else if(e.code=='ArrowLeft')stepPhase(-1)});
+
+/* ---- Today's Session: block list + countdown, next drill loads automatically ---- */
+const T={i:0,left:SESSION.blocks[0].min*60,run:false,end:0,ac:null,done:false};
+function beep(n){try{T.ac=T.ac||new (window.AudioContext||window.webkitAudioContext)();for(let i=0;i<(n||1);i++){const o=T.ac.createOscillator(),g=T.ac.createGain();o.frequency.value=880;o.connect(g);g.connect(T.ac.destination);const t=T.ac.currentTime+i*.28;g.gain.setValueAtTime(.35,t);g.gain.exponentialRampToValueAtTime(.001,t+.22);o.start(t);o.stop(t+.24)}}catch(e){}}
+function wake(on){try{if(on&&navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>T.wl=l).catch(()=>{});else if(T.wl){T.wl.release();T.wl=null}}catch(e){}}
+function loadBlock(i,restart){T.i=clamp(i,0,SESSION.blocks.length-1);const b=SESSION.blocks[T.i];
+ if(restart!==false||T.left==null){T.left=b.min*60;if(T.run)T.end=Date.now()+T.left*1000}
+ T.done=false;if(b.drills.length)selectDrill(b.drills[0],{keepView:true});renderSession()}
+function renderSession(){const bs=SESSION.blocks,b=bs[T.i];let acc=0;
+ const rows=bs.map((x,i)=>{const a=acc;acc+=x.min;return '<button class="blk'+(i==T.i?' on':i<T.i?' done':'')+'" data-blk="'+i+'"><small>'+fmt(a*60).replace(/^0/,'')+'–'+fmt(acc*60).replace(/^0/,'')+'<br>'+x.min+' min</small><span><b>'+esc(x.block)+(x.drills.length?' · '+x.drills.join(' + '):'')+'</b>'+esc(x.what)+'</span></button>'}).join('');
+ $('#vSession').innerHTML='<div class="tc"><div class="bk">Block '+(T.i+1)+' of '+bs.length+' · '+esc(b.block)+'</div><div id="clock">'+fmt(T.left)+'</div>'+
+ '<div class="wh">'+esc(b.what)+'</div><div class="who">'+esc(b.who)+'</div>'+
+ '<div class="row">'+b.drills.map(id=>'<button class="b sm" data-drill="'+id+'" data-keep="1">Show '+id+'</button>').join('')+(b.drills.length?'<button class="b sm" id="tInfo">Drill details</button>':'')+'</div>'+
+ '<div class="row"><button class="b" id="tPrev">◀ Prev</button><button class="b go" id="tGo">'+(T.run?'❚❚ Pause':T.done?'Restart':'▶ Start')+'</button><button class="b" id="tNext">Next ▶</button><button class="b" id="tReset">Reset</button></div>'+
+ '<div id="tot"><i></i></div></div>'+
+ '<p class="note">'+esc(SESSION.intro)+'</p>'+rows+
+ '<details><summary>What to bring and where the cones go</summary><p>'+esc(SESSION.bring)+'</p><table><tr><th>Block</th><th>Cones</th><th>Positions</th></tr>'+SESSION.cones.map(c=>'<tr><td>'+esc(c[0])+'</td><td>'+esc(c[1])+'</td><td>'+esc(c[2])+'</td></tr>').join('')+'</table></details>'+
+ '<p class="note">'+link(SESSION.note)+'</p>';
+ $('#tPrev').onclick=()=>loadBlock(T.i-1);$('#tNext').onclick=()=>loadBlock(T.i+1);
+ $('#tReset').onclick=()=>{T.run=false;wake(false);loadBlock(0)};
+ $('#tGo').onclick=()=>{if(T.done){T.done=false;T.run=true;loadBlock(0);wake(true);return}T.run=!T.run;if(T.run){T.end=Date.now()+T.left*1000;beep(1);wake(true)}else wake(false);renderSession()};
+ const ti=$('#tInfo');if(ti)ti.onclick=()=>setView('drill');
+ $$('.blk').forEach(x=>x.onclick=()=>loadBlock(+x.dataset.blk));clockUI()}
+function clockUI(){const c=$('#clock');if(!c)return;c.textContent=T.done?'DONE':fmt(T.left);const tot=SESSION.blocks.reduce((a,b)=>a+b.min*60,0),before=SESSION.blocks.slice(0,T.i).reduce((a,b)=>a+b.min*60,0);
+ const bar=$('#tot i');if(bar)bar.style.width=(T.done?100:(before+SESSION.blocks[T.i].min*60-T.left)/tot*100)+'%'}
+setInterval(()=>{if(!T.run)return;T.left=(T.end-Date.now())/1000;
+ if(T.left<=0){if(T.i<SESSION.blocks.length-1){beep(2);T.left=null;loadBlock(T.i+1)}else{T.run=false;T.done=true;T.left=0;beep(3);wake(false);renderSession()}}
+ clockUI()},250);
+
+/* ---- 4-week plan checklist (ticks saved in this browser) ---- */
+let trackF='all';
+function renderPlan(){let tot=0,done=0,html='';
+ for(const w of PLAN.weeks){let ws='';for(const s of w.sessions){if(trackF!='all'&&!s.track.includes(trackF))continue;let c=0;
+   const rows=PLAN.fields.map(f=>{const k='s'+s.n+'.'+f[0],on=!!S.plan[k];tot++;if(on){done++;c++}return '<label class="ck'+(on?' done':'')+'"><input type="checkbox" data-k="'+k+'"'+(on?' checked':'')+'><span><b>'+f[1]+'</b>'+link(s[f[0]])+'</span></label>'}).join('');
+   ws+='<div class="ses'+(c==PLAN.fields.length?' full':'')+'"><header>Session '+s.n+' · '+s.date+(c==PLAN.fields.length?' · done ✔':'')+'<span class="tk '+s.track+'">'+s.track+' day</span></header>'+rows+'</div>'}
+  if(ws)html+='<h3>'+esc(w.title)+'</h3>'+ws}
+ $('#vPlan').innerHTML='<div class="dh"><span class="id">4 wk</span><h2>4-week plan for 3 players</h2></div>'+
+ '<div class="seg" id="fTrack"><span>Track</span>'+[['all','All'],['CM','CM days'],['LW','LW days']].map(o=>'<button data-v="'+o[0]+'"'+(trackF==o[0]?' class="on"':'')+'>'+o[1]+'</button>').join('')+'</div>'+
+ '<p class="bar">'+done+' of '+tot+' items ticked</p><div id="tot" style="background:#c9d0d9"><i style="width:'+(tot?done/tot*100:0)+'%;background:var(--grn)"></i></div>'+
+ '<details><summary>How the plan works</summary><p>'+link(PLAN.intro)+'</p><p style="margin-top:8px">'+link(PLAN.versions)+'</p></details>'+html+
+ '<h3>Baseline and re-test</h3><p>Record these in session 2 and again in session 9. Film sprints with a phone and time them from the video.</p><table><tr><th>Test</th><th>How</th><th>Week 1</th><th>Week 4</th></tr>'+
+ PLAN.baseline.map((b,i)=>'<tr><td>'+esc(b[0])+'</td><td>'+link(b[1])+'</td>'+[1,4].map(wk=>'<td><input inputmode="decimal" data-b="'+i+'.'+wk+'" value="'+esc(S.base[i+'.'+wk]||'')+'" aria-label="'+esc(b[0])+' week '+wk+'"></td>').join('')+'</tr>').join('')+'</table>'+
+ '<p style="margin-top:14px"><button class="b" id="planReset">Clear all ticks</button></p>';
+ $$('#fTrack button').forEach(b=>b.onclick=()=>{trackF=b.dataset.v;renderPlan()});
+ $('#planReset').onclick=()=>{if(confirm('Clear every tick in the plan?')){S.plan={};save();renderPlan()}}}
+$('#vPlan').addEventListener('change',e=>{const t=e.target;if(t.dataset.k){S.plan[t.dataset.k]=t.checked;if(!t.checked)delete S.plan[t.dataset.k];save();renderPlan()}else if(t.dataset.b){S.base[t.dataset.b]=t.value;save()}});
+
+/* ---- self-test: window.testAllDrills() loads and samples every drill ---- */
+window.testAllDrills=function(){const out=[];for(const d of DRILLS){try{const c=loadDrill(d);let bad=0;for(let t=0;t<=c.dur;t+=c.dur/40){evaluate(t);for(const a of c.list)a.M.root.traverse(o=>{if(isNaN(o.rotation.x+o.rotation.y+o.rotation.z+o.position.x+o.position.y+o.position.z))bad++});if(isNaN(ballMesh.position.x+ballMesh.position.y+ballMesh.position.z))bad++}
+  const last=d.anim.phases[d.anim.phases.length-1][1];if(bad)out.push(d.id+': '+bad+' NaN values');if(last>d.anim.dur+1e-6)out.push(d.id+': phase ends after dur')}catch(e){out.push(d.id+': '+e.message)}}
+ selectDrill(P.drill.id,{keepView:true,play:false});return out.length?out:'OK: '+DRILLS.length+' drills'};
+
+/* ---- start ---- */
+renderList();renderPlan();cam.mode=window.innerWidth<700?'behind':'side';
+selectDrill(BYID[S.last]?S.last:DRILLS[0].id,{play:false});
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
